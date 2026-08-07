@@ -1,17 +1,21 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  date,
+  index,
+  int,
+  json,
+  mysqlEnum,
+  mysqlTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
+/** Core identity table managed by the Manus OAuth callback. */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -22,7 +26,164 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+/** Mountain catalogue. The former client-side catalogue is migrated here. */
+export const mountains = mysqlTable("mountains", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  elevation: int("elevation").notNull(),
+  location: text("location").notNull(),
+  prefecture: varchar("prefecture", { length: 64 }).notNull(),
+  difficulty: mysqlEnum("difficulty", ["beginner", "intermediate", "advanced"]).notNull(),
+  description: text("description").notNull(),
+  recommendedSeason: varchar("recommendedSeason", { length: 255 }).notNull(),
+  estimatedTime: varchar("estimatedTime", { length: 255 }).notNull(),
+  imageUrl: varchar("imageUrl", { length: 2048 }).notNull(),
+  stampText: varchar("stampText", { length: 255 }).notNull(),
+  stampIcon: varchar("stampIcon", { length: 64 }).notNull(),
+  stampColor: varchar("stampColor", { length: 128 }).notNull(),
+  stampBgColor: varchar("stampBgColor", { length: 128 }).notNull(),
+  stampBorderColor: varchar("stampBorderColor", { length: 128 }).notNull(),
+  isPublished: boolean("isPublished").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("mountains_prefecture_idx").on(table.prefecture),
+  index("mountains_difficulty_idx").on(table.difficulty),
+]);
+
+export const albums = mysqlTable("albums", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  coverColor: varchar("coverColor", { length: 128 }).notNull(),
+  accentColor: varchar("accentColor", { length: 128 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const albumMountains = mysqlTable("albumMountains", {
+  albumId: varchar("albumId", { length: 128 }).notNull().references(() => albums.id, { onDelete: "cascade" }),
+  mountainId: varchar("mountainId", { length: 128 }).notNull().references(() => mountains.id, { onDelete: "cascade" }),
+  position: int("position").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.albumId, table.mountainId] }),
+  index("album_mountains_mountain_idx").on(table.mountainId),
+]);
+
+export const badges = mysqlTable("badges", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  icon: varchar("icon", { length: 64 }).notNull(),
+  requirement: text("requirement").notNull(),
+});
+
+export const challengeTemplates = mysqlTable("challengeTemplates", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  xpReward: int("xpReward").notNull(),
+});
+
+/** One application profile is created for each authenticated Manus user. */
+export const userProfiles = mysqlTable("userProfiles", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  nickname: varchar("nickname", { length: 80 }).notNull(),
+  avatarUrl: varchar("avatarUrl", { length: 2048 }).notNull(),
+  bio: text("bio").notNull(),
+  totalXp: int("totalXp").default(0).notNull(),
+  level: int("level").default(1).notNull(),
+  xp: int("xp").default(0).notNull(),
+  xpToNextLevel: int("xpToNextLevel").default(150).notNull(),
+  companionName: varchar("companionName", { length: 80 }).default("ヤマコ").notNull(),
+  companionAnimal: varchar("companionAnimal", { length: 32 }).default("squirrel").notNull(),
+  companionSkinStage: int("companionSkinStage").default(1).notNull(),
+  homePrefecture: varchar("homePrefecture", { length: 64 }).default("京都").notNull(),
+  preferredCondition: varchar("preferredCondition", { length: 80 }).default("景色重視").notNull(),
+  isBanned: boolean("isBanned").default(false).notNull(),
+  isPremium: boolean("isPremium").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("user_profiles_user_id_unique").on(table.userId)]);
+
+/** Individual climb records owned by the authenticated user. Photo values are S3 URLs, never base64 data. */
+export const climbRecords = mysqlTable("climbRecords", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  mountainId: varchar("mountainId", { length: 128 }).notNull().references(() => mountains.id, { onDelete: "restrict" }),
+  climbDate: date("climbDate").notNull(),
+  memo: text("memo").notNull(),
+  weather: varchar("weather", { length: 32 }),
+  companions: varchar("companions", { length: 255 }),
+  photoUrls: json("photoUrls").$type<string[]>().notNull(),
+  stampId: varchar("stampId", { length: 255 }).notNull(),
+  xpEarned: int("xpEarned").notNull(),
+  companionSkillUsed: varchar("companionSkillUsed", { length: 128 }),
+  companionSkillName: varchar("companionSkillName", { length: 255 }),
+  companionBonusXp: int("companionBonusXp"),
+  hasRainbowGlow: boolean("hasRainbowGlow").default(false).notNull(),
+  luckyFortune: varchar("luckyFortune", { length: 255 }),
+  triviaText: text("triviaText"),
+  companionBonusMessage: text("companionBonusMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("climb_records_user_created_idx").on(table.userId, table.createdAt),
+  index("climb_records_user_mountain_idx").on(table.userId, table.mountainId),
+]);
+
+export const userChallenges = mysqlTable("userChallenges", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  templateId: varchar("templateId", { length: 128 }).notNull().references(() => challengeTemplates.id, { onDelete: "cascade" }),
+  isCompleted: boolean("isCompleted").default(false).notNull(),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("user_challenges_user_template_unique").on(table.userId, table.templateId)]);
+
+export const userBadges = mysqlTable("userBadges", {
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  badgeId: varchar("badgeId", { length: 128 }).notNull().references(() => badges.id, { onDelete: "cascade" }),
+  unlockedAt: timestamp("unlockedAt").defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.badgeId] })]);
+
+export const inquiries = mysqlTable("inquiries", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: mysqlEnum("type", ["bug", "question", "feedback", "other"]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  status: mysqlEnum("status", ["open", "answered", "closed"]).default("open").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("inquiries_user_created_idx").on(table.userId, table.createdAt)]);
+
+export const inquiryReplies = mysqlTable("inquiryReplies", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  inquiryId: varchar("inquiryId", { length: 64 }).notNull().references(() => inquiries.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sender: mysqlEnum("sender", ["user", "admin"]).notNull(),
+  nickname: varchar("nickname", { length: 80 }).notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("inquiry_replies_inquiry_created_idx").on(table.inquiryId, table.createdAt)]);
+
+/** Persisted companion conversation history for each authenticated user. */
+export const companionMessages = mysqlTable("companionMessages", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: mysqlEnum("role", ["user", "model"]).notNull(),
+  text: text("text").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("companion_messages_user_created_idx").on(table.userId, table.createdAt)]);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
-
-// TODO: Add your tables here
+export type Mountain = typeof mountains.$inferSelect;
+export type Album = typeof albums.$inferSelect;
+export type Badge = typeof badges.$inferSelect;
+export type ChallengeTemplate = typeof challengeTemplates.$inferSelect;
+export type UserProfile = typeof userProfiles.$inferSelect;
+export type ClimbRecord = typeof climbRecords.$inferSelect;

@@ -42,6 +42,17 @@ function createAuthContext(): { ctx: TrpcContext; clearedCookies: CookieCall[] }
 }
 
 describe("auth.logout", () => {
+  it("exposes the OAuth-authenticated user through the session context", async () => {
+    const { ctx } = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(caller.auth.me()).resolves.toMatchObject({
+      id: 1,
+      openId: "sample-user",
+      email: "sample@example.com",
+    });
+  });
+
   it("clears the session cookie and reports success", async () => {
     const { ctx, clearedCookies } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
