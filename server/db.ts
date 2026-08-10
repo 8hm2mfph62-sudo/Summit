@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { eq, and, sql, asc, inArray, desc } from "drizzle-orm";
+import { invokeLLM } from "./_core/llm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { nanoid } from "nanoid";
 import {
@@ -429,13 +430,52 @@ export async function sendCompanionMessage(user: User, text: string) {
   const recentRecords = await db.select({ id: climbRecords.id }).from(climbRecords)
     .where(eq(climbRecords.userId, user.id));
   const normalized = text.trim();
-  const replyText = `${profile.companionName}より：${normalized.includes("装備") || normalized.includes("持ち物")
-    ? "安全のため、地図・雨具・水分・行動食・ライトを確認してから出発しよう。"
-    : normalized.includes("天気") || normalized.includes("雨")
-      ? "出発前に最新の気象情報を確認し、悪天候が予想されるときは無理をしないでね。"
-      : `登頂記録は現在${recentRecords.length}件です。山の詳細と行程を確認して、安全第一で楽しもう。`}`;
+
+  let aiReplyText = "";
+  try {
+    const history = await db.select().from(companionMessages)
+      .where(eq(companionMessages.userId, user.id))
+      .orderBy(asc(companionMessages.createdAt))
+      .limit(10);
+
+    const messagesForLLM = [
+      {
+        role: "system" as const,
+        content: `あなたは登山の相棒である可愛い動物のコンパニオン「${profile.companionName || "ヤマコ"}」です。親しみやすく元気な口調で、登山者の安全、持ち物、天候、ルート選び、登頂記録についてアドバイスや励ましの言葉を伝えます。ユーザーのこれまでの登頂数は${recentRecords.length}回です。`,
+      },
+      ...history.map(h => ({
+        role: (h.role === "user" ? "user" : "assistant") as "user" | "assistant",
+        content: h.text,
+      })),
+      { role: "user" as const, content: normalized },
+    ];
+
+    const result = await invokeLLM({
+      messages: messagesForLLM,
+    });
+
+    const choice = result.choices[0];
+    if (choice && typeof choice.message.content === "string") {
+      aiReplyText = choice.message.content;
+    } else if (choice && Array.isArray(choice.message.content)) {
+      aiReplyText = choice.message.content
+        .map((p: any) => (p.type === "text" ? p.text : ""))
+        .join("");
+    }
+  } catch (error) {
+    console.error("[CompanionAI] LLM invocation failed, falling back to heuristic reply:", error);
+  }
+
+  if (!aiReplyText) {
+    aiReplyText = `${profile.companionName || "ヤマコ"}より：${normalized.includes("装備") || normalized.includes("持ち物")
+      ? "安全のため、地図・雨具・水分・行動食・ライトを確認してから出発しよう。"
+      : normalized.includes("天気") || normalized.includes("雨")
+        ? "出発前に最新の気象情報を確認し、悪天候が予想されるときは無理をしないでね。"
+        : `登頂記録は現在${recentRecords.length}件です。山の詳細と行程を確認して、安全第一で楽しもう。`}`;
+  }
+
   const userMessage = { id: nanoid(), userId: user.id, role: "user" as const, text: normalized };
-  const reply = { id: nanoid(), userId: user.id, role: "model" as const, text: replyText };
+  const reply = { id: nanoid(), userId: user.id, role: "model" as const, text: aiReplyText };
   await db.insert(companionMessages).values([userMessage, reply]);
   return {
     userMessage: { ...userMessage, createdAt: new Date().toISOString() },
