@@ -7,6 +7,29 @@ import { useState, useMemo } from 'react';
 import { Mountain, ClimbRecord, UserProfile } from '../types';
 import { Search, SlidersHorizontal, ArrowUpDown, CheckCircle, Compass, MapPin } from 'lucide-react';
 
+export const PREFECTURE_ORDER = [
+  '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+  '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+  '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県', '岐阜県',
+  '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県',
+  '奈良県', '和歌山県', '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+  '徳島県', '香川県', '愛媛県', '高知県', '福岡県', '佐賀県', '長崎県',
+  '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
+] as const;
+
+export function toOfficialPrefecture(value: string) {
+  const trimmed = value.trim();
+  if (trimmed === '北海道') return trimmed;
+  if (trimmed === '東京' || trimmed === '東京都') return '東京都';
+  if (trimmed === '京都' || trimmed === '京都府') return '京都府';
+  if (trimmed === '大阪' || trimmed === '大阪府') return '大阪府';
+  return trimmed.endsWith('県') ? trimmed : `${trimmed}県`;
+}
+
+export function matchesPrefecture(value: string, target: string) {
+  return value.split('・').some((part) => toOfficialPrefecture(part) === target);
+}
+
 interface SearchViewProps {
   mountains: Mountain[];
   records: ClimbRecord[];
@@ -23,24 +46,12 @@ export default function SearchView({ mountains, records, onSelectMountain, isCli
   const [sortBy, setSortBy] = useState<string>('id'); // 'id' (default), 'elevation-desc', 'elevation-asc', 'name'
   const [showFilters, setShowFilters] = useState(false);
 
-  // Preserve the original area groups and append prefectures present in the DB catalogue.
+  // Show only official prefecture labels that have mountain data in the catalogue.
   const prefectures = useMemo(() => {
-    const base = [
-      'すべて',
-      '東山・山科・伏見',
-      '北山・左京区・北区',
-      '西山・右京区・西京区',
-      '丹波・京都中部',
-      '山城・京都南部',
-      '丹後・京都北部',
-      '北海道（大雪山・十勝）',
-      '北海道（日高山脈）',
-      '北海道（知床・阿寒・道東）',
-      '北海道（道央・道南・積丹）',
-    ];
-    const cataloguePrefectures = Array.from(new Set(mountains.map((mountain) => mountain.prefecture)))
-      .filter((prefecture) => prefecture && !base.includes(prefecture));
-    return [...base, ...cataloguePrefectures];
+    const available = new Set(
+      mountains.flatMap((mountain) => mountain.prefecture.split('・').map(toOfficialPrefecture)),
+    );
+    return ['すべて', ...PREFECTURE_ORDER.filter((prefecture) => available.has(prefecture))];
   }, [mountains]);
 
   // Difficulty translations
@@ -81,29 +92,9 @@ export default function SearchView({ mountains, records, onSelectMountain, isCli
       );
     }
 
-    // 2. Prefecture Area Filter
+    // 2. Prefecture filter
     if (selectedPrefecture !== 'すべて') {
-      if (selectedPrefecture.startsWith('北海道')) {
-        const subArea = selectedPrefecture.match(/（(.*)）/)?.[1] || '';
-        result = result.filter(m => {
-          if (m.prefecture !== '北海道') return false;
-          if (subArea === '大雪山・十勝') {
-            return m.location.includes('大雪山') || m.location.includes('十勝') || m.location.includes('石狩') || m.location.includes('北見') || m.location.includes('東大雪');
-          }
-          if (subArea === '日高山脈') {
-            return m.location.includes('日高');
-          }
-          if (subArea === '知床・阿寒・道東') {
-            return m.location.includes('道東') || m.location.includes('知床') || m.location.includes('阿寒') || m.location.includes('利尻');
-          }
-          if (subArea === '道央・道南・積丹') {
-            return m.location.includes('道央') || m.location.includes('道南') || m.location.includes('積丹') || m.location.includes('札幌') || m.location.includes('渡島') || m.location.includes('夕張') || m.location.includes('増毛') || m.location.includes('ニセコ') || m.location.includes('支笏') || m.location.includes('小樽') || m.location.includes('函館') || m.location.includes('洞爺');
-          }
-          return false;
-        });
-      } else {
-        result = result.filter(m => m.location.includes(selectedPrefecture));
-      }
+      result = result.filter((mountain) => matchesPrefecture(mountain.prefecture, selectedPrefecture));
     }
 
     // 3. Difficulty Filter
@@ -334,7 +325,7 @@ export default function SearchView({ mountains, records, onSelectMountain, isCli
               className="w-full text-xs font-medium px-2 py-1.5 border border-gray-350 rounded-lg bg-white"
             >
               {prefectures.map(pref => (
-                <option key={pref} value={pref}>{pref === 'すべて' ? 'すべてのエリア' : pref + 'エリア'}</option>
+              <option key={pref} value={pref}>{pref === 'すべて' ? 'すべての都道府県' : pref}</option>
               ))}
             </select>
           </div>
