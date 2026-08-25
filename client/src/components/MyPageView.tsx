@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Award, Check, Edit2, Flame, HelpCircle, LogOut, RefreshCw, Send, Settings, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { PREFECTURE_ORDER, toOfficialPrefecture } from "@/lib/prefectures";
+import { prepareProfileUpdate } from "@/lib/profileSettings";
 import { Badge, ClimbRecord, UserProfile, getCompanionEvolutionForLevel, getRankInfo } from "../types";
 
 type CompanionAnimal = "squirrel" | "fox" | "bear" | "rabbit" | "owl" | "deer" | "cat" | "dog";
@@ -37,7 +39,7 @@ export default function MyPageView({ badges, userProfile, records, onUpdateProfi
   const [avatarUrl, setAvatarUrl] = useState(userProfile.avatarUrl);
   const [companionName, setCompanionName] = useState(userProfile.companionName || "ヤマコ");
   const [companionAnimal, setCompanionAnimal] = useState<CompanionAnimal>((userProfile.companionAnimal as CompanionAnimal) || "squirrel");
-  const [homePrefecture, setHomePrefecture] = useState(userProfile.homePrefecture || "京都");
+  const [homePrefecture, setHomePrefecture] = useState(toOfficialPrefecture(userProfile.homePrefecture || "京都府"));
   const [preferredCondition, setPreferredCondition] = useState(userProfile.preferredCondition || "景色重視");
   const [saving, setSaving] = useState(false);
   const [showReset, setShowReset] = useState(false);
@@ -63,7 +65,7 @@ export default function MyPageView({ badges, userProfile, records, onUpdateProfi
     setAvatarUrl(userProfile.avatarUrl);
     setCompanionName(userProfile.companionName || "ヤマコ");
     setCompanionAnimal((userProfile.companionAnimal as CompanionAnimal) || "squirrel");
-    setHomePrefecture(userProfile.homePrefecture || "京都");
+    setHomePrefecture(toOfficialPrefecture(userProfile.homePrefecture || "京都府"));
     setPreferredCondition(userProfile.preferredCondition || "景色重視");
   }, [userProfile]);
 
@@ -78,11 +80,11 @@ export default function MyPageView({ badges, userProfile, records, onUpdateProfi
     }
     setSaving(true);
     try {
-      await onUpdateProfile({
+      await onUpdateProfile(prepareProfileUpdate({
         nickname: nickname.trim(), bio: bio.trim(), avatarUrl, companionName: companionName.trim(),
         companionAnimal,
         companionSkinStage: userProfile.companionSkinStage || 1, homePrefecture, preferredCondition,
-      });
+      }));
       setIsEditing(false);
       toast.success("プロフィールを保存しました。");
     } catch (error) {
@@ -129,7 +131,7 @@ export default function MyPageView({ badges, userProfile, records, onUpdateProfi
           <label className="block text-xs font-bold text-stone-600">ひとこと<textarea value={bio} onChange={(event) => setBio(event.target.value)} maxLength={5000} className="mt-1.5 w-full min-h-20 rounded-xl border border-stone-200 px-3 py-2.5" /></label>
           <div><p className="text-xs font-bold text-stone-600">アバター</p><div className="mt-2 flex flex-wrap gap-2">{avatars.map((avatar) => <button key={avatar} onClick={() => setAvatarUrl(avatar)} className={`h-9 w-9 rounded-lg text-lg ${avatarUrl === avatar ? "bg-emerald-100 ring-2 ring-emerald-600" : "bg-stone-50"}`}>{avatar}</button>)}</div></div>
           <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-stone-600">パートナー名<input value={companionName} onChange={(event) => setCompanionName(event.target.value)} maxLength={80} className="mt-1.5 w-full rounded-xl border border-stone-200 px-3 py-2.5" /></label><label className="text-xs font-bold text-stone-600">パートナー<select value={companionAnimal} onChange={(event) => setCompanionAnimal(event.target.value as CompanionAnimal)} className="mt-1.5 w-full rounded-xl border border-stone-200 px-3 py-2.5">{companions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
-          <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-stone-600">活動エリア<input value={homePrefecture} onChange={(event) => setHomePrefecture(event.target.value)} maxLength={64} className="mt-1.5 w-full rounded-xl border border-stone-200 px-3 py-2.5" /></label><label className="text-xs font-bold text-stone-600">登山のこだわり<select value={preferredCondition} onChange={(event) => setPreferredCondition(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 px-3 py-2.5"><option>景色重視</option><option>体力づくり</option><option>初心者向け</option><option>歴史・寺社巡り</option><option>大自然・秘境</option></select></label></div>
+          <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-stone-600">活動エリア<select value={homePrefecture} onChange={(event) => setHomePrefecture(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{PREFECTURE_ORDER.map((prefecture) => <option key={prefecture} value={prefecture}>{prefecture}</option>)}</select></label><label className="text-xs font-bold text-stone-600">登山のこだわり<select value={preferredCondition} onChange={(event) => setPreferredCondition(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 px-3 py-2.5"><option>景色重視</option><option>体力づくり</option><option>初心者向け</option><option>歴史・寺社巡り</option><option>大自然・秘境</option></select></label></div>
           <button disabled={saving} onClick={saveProfile} className="w-full rounded-xl bg-[#2D5A27] py-3 text-xs font-black text-white disabled:opacity-60">{saving ? "保存中…" : "変更を保存する"}</button>
         </div> : <div className="flex items-center gap-3 rounded-xl bg-emerald-50/50 p-3"><span className="text-3xl">{activeCompanion.emoji}</span><div><p className="text-xs font-black text-emerald-950">{userProfile.companionName || "ヤマコ"} — {activeCompanion.title}</p><p className="mt-0.5 text-[10px] text-stone-500">{homePrefecture}を拠点に「{preferredCondition}」の山を探しています。</p></div></div>}
       </section>
