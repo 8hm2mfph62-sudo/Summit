@@ -23,20 +23,25 @@ export default function SearchView({ mountains, records, onSelectMountain, isCli
   const [sortBy, setSortBy] = useState<string>('id'); // 'id' (default), 'elevation-desc', 'elevation-asc', 'name'
   const [showFilters, setShowFilters] = useState(false);
 
-  // Available Prefectures / Areas
-  const prefectures = [
-    'すべて',
-    '東山・山科・伏見',
-    '北山・左京区・北区',
-    '西山・右京区・西京区',
-    '丹波・京都中部',
-    '山城・京都南部',
-    '丹後・京都北部',
-    '北海道（大雪山・十勝）',
-    '北海道（日高山脈）',
-    '北海道（知床・阿寒・道東）',
-    '北海道（道央・道南・積丹）'
-  ];
+  // Preserve the original area groups and append prefectures present in the DB catalogue.
+  const prefectures = useMemo(() => {
+    const base = [
+      'すべて',
+      '東山・山科・伏見',
+      '北山・左京区・北区',
+      '西山・右京区・西京区',
+      '丹波・京都中部',
+      '山城・京都南部',
+      '丹後・京都北部',
+      '北海道（大雪山・十勝）',
+      '北海道（日高山脈）',
+      '北海道（知床・阿寒・道東）',
+      '北海道（道央・道南・積丹）',
+    ];
+    const cataloguePrefectures = Array.from(new Set(mountains.map((mountain) => mountain.prefecture)))
+      .filter((prefecture) => prefecture && !base.includes(prefecture));
+    return [...base, ...cataloguePrefectures];
+  }, [mountains]);
 
   // Difficulty translations
   const difficulties = [
