@@ -151,4 +151,16 @@ describe("mountain tRPC CRUD", () => {
     });
     expect(dbMock.sendCompanionMessage).toHaveBeenCalledWith(user, "装備を確認したい");
   });
+
+  it("reloads the persisted companion history for the authenticated user", async () => {
+    const history = [
+      { id: "message-1", role: "user", text: "装備を確認したい", createdAt: new Date().toISOString() },
+      { id: "message-2", role: "model", text: "雨具と水分を確認しましょう。", createdAt: new Date().toISOString() },
+    ];
+    dbMock.listCompanionMessages.mockResolvedValue(history);
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.mountain.companion.list()).resolves.toEqual(history);
+    expect(dbMock.listCompanionMessages).toHaveBeenCalledWith(user);
+  });
 });

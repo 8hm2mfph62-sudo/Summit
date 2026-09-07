@@ -4,7 +4,7 @@
  */
 
 import { Mountain, Album, ClimbRecord, UserProfile, DailyChallenge, getRankInfo } from '../types';
-import { Award, Compass, Heart, Calendar, CheckSquare, Square, ChevronRight, BookOpen, Star, RefreshCw, Play, Volume2, X } from 'lucide-react';
+import { Award, Compass, Heart, Calendar, CheckSquare, Square, ChevronRight, BookOpen, Star, RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useState, useEffect } from 'react';
 
@@ -32,20 +32,6 @@ export default function HomeView({
   onOpenCompanion,
 }: HomeViewProps) {
   const [recommendedMountain, setRecommendedMountain] = useState<Mountain | null>(mountains[0] ?? null);
-  const [showAdPlayer, setShowAdPlayer] = useState(false);
-  const [adCountdown, setAdCountdown] = useState(10);
-
-  // Video ad countdown timer
-  useEffect(() => {
-    if (!showAdPlayer) return;
-    if (adCountdown <= 0) return;
-
-    const timer = setTimeout(() => {
-      setAdCountdown(prev => prev - 1);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [showAdPlayer, adCountdown]);
 
   // Choose a recommended mountain statically or based on daily rotation
   useEffect(() => {
@@ -99,7 +85,7 @@ export default function HomeView({
             {/* Interactive Yamako Mascot Badge */}
             <motion.div
               onClick={onOpenCompanion}
-              className="relative cursor-pointer group select-none flex flex-col items-center bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 px-3 py-1 rounded-2xl transition-all"
+              className="relative cursor-pointer group select-none flex flex-col items-center justify-center bg-white/15 hover:bg-white/25 border-2 border-emerald-200/50 hover:border-amber-200 px-4 py-2 rounded-3xl transition-all shadow-lg shadow-black/10"
               title="ヤマコとお話しする！"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -109,11 +95,12 @@ export default function HomeView({
                 話すのだ！🐿️
                 <div className="absolute bottom-[-3px] left-1/2 -translate-x-1/2 w-1 h-1 bg-white border-b border-r border-emerald-800 transform rotate-45"></div>
               </div>
-              <div className="text-3xl filter drop-shadow-md relative mt-1">
-                🐿️
-                <span className="absolute -left-1 bottom-0 text-[10px]">🎒</span>
+              <div className="relative mt-1 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-900/40 ring-2 ring-amber-200/70 shadow-inner">
+                <span className="text-5xl leading-none filter drop-shadow-md transition-transform group-hover:scale-110">🐿️</span>
+                <span className="absolute -bottom-1 -left-1 text-base">🎒</span>
               </div>
-              <span className="text-[9px] font-black text-emerald-100 leading-none pb-0.5">ヤマコ</span>
+              <span className="mt-1 text-[11px] font-black text-white leading-none">ヤマコ</span>
+              <span className="mt-1 rounded-full bg-amber-300 px-2 py-0.5 text-[8px] font-black text-emerald-950">話しかける</span>
             </motion.div>
 
             <div className="text-right shrink-0 flex flex-col items-end">
@@ -272,20 +259,6 @@ export default function HomeView({
                 </div>
               </div>
 
-              {ch.id === 'challenge_ad' && !ch.isCompleted && (
-                <div className="pl-8 flex justify-start">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAdPlayer(true);
-                      setAdCountdown(10);
-                    }}
-                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-650 text-white font-black text-[10px] rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1 active:scale-95"
-                  >
-                    <span>動画CMを視聴する 🎬</span>
-                  </button>
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -364,122 +337,6 @@ export default function HomeView({
         )}
       </div>
 
-      {/* 6. Video Ad Player Overlay */}
-      {showAdPlayer && (
-        <div className="absolute inset-0 bg-black/95 z-50 flex flex-col justify-between p-6 select-none animate-in fade-in zoom-in-95 duration-200">
-          
-          {/* Ad Header */}
-          <div className="flex items-center justify-between text-white/80">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs bg-amber-500 text-black font-extrabold px-2 py-0.5 rounded-sm tracking-wider scale-90">
-                SPONSOR AD
-              </span>
-              <span className="text-[10px] font-bold text-gray-400">登頂応援CM</span>
-            </div>
-            
-            {/* Close / Skip Button */}
-            <button
-              onClick={() => {
-                if (adCountdown > 0) {
-                  if (confirm('動画を最後まで視聴しないと報酬XPは貰えないのだ！今閉じるのだ？')) {
-                    setShowAdPlayer(false);
-                  }
-                } else {
-                  setShowAdPlayer(false);
-                }
-              }}
-              className="p-1.5 hover:bg-white/10 rounded-full text-white/70 hover:text-white transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Ad Content Screen Mockup */}
-          <div className="my-auto py-8 text-center flex flex-col items-center justify-center space-y-6">
-            
-            {/* Ad Animation Box */}
-            <div className="w-full max-w-xs aspect-video bg-stone-900 border border-white/15 rounded-2xl overflow-hidden shadow-2xl relative flex flex-col justify-between p-4">
-              {/* Video Player Style Controls */}
-              <div className="flex items-center justify-between text-[9px] text-white/50 font-mono">
-                <span className="flex items-center gap-1"><Volume2 className="w-3.5 h-3.5 text-white/70 animate-bounce" /> AUTO PLAY</span>
-                <span>1080p 60fps</span>
-              </div>
-
-              {/* Creative Ad Graphics / Content */}
-              <div className="flex flex-col items-center space-y-3 my-auto">
-                <motion.div
-                  animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.1, 1.1, 1] }}
-                  transition={{ repeat: Infinity, duration: 2.5 }}
-                  className="text-5xl"
-                >
-                  🐿️🥜
-                </motion.div>
-                
-                <div className="space-y-1">
-                  <motion.h5
-                    animate={{ color: ['#FFF', '#FBBF24', '#FFF'] }}
-                    transition={{ repeat: Infinity, duration: 3 }}
-                    className="text-sm font-black text-white tracking-tight"
-                  >
-                    リス印の栄養ピーナッツ
-                  </motion.h5>
-                  <p className="text-[10px] text-amber-300 font-bold">
-                    「山登りのお供に！スタミナ持続なのだ！」
-                  </p>
-                </div>
-                
-                <div className="px-3 py-1 bg-white/10 border border-white/15 rounded-full text-[9.5px] text-white/90">
-                  {adCountdown > 6 ? (
-                    <span>🌲 大自然のなかで食べるのが一番おいしいのだ！</span>
-                  ) : adCountdown > 3 ? (
-                    <span>💪 必須アミノ酸・ビタミン豊富でパワー充電！</span>
-                  ) : (
-                    <span>🎁 今なら最寄りの山小屋で10%OFF販売中！</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Progress bar overlay */}
-              <div className="w-full bg-white/20 h-1 rounded-full overflow-hidden">
-                <div
-                  className="bg-amber-400 h-full transition-all duration-1000 ease-linear"
-                  style={{ width: `${((10 - adCountdown) / 10) * 100}%` }}
-                ></div>
-              </div>
-            </div>
-
-            {/* Title / Description */}
-            <div className="space-y-1">
-              <p className="text-white font-extrabold text-sm">
-                スポンサー：やまこ物産 ピーナッツ課
-              </p>
-              <p className="text-xs text-gray-400">
-                視聴完了すると、デイリークエスト「お役立ち動画の視聴」が完了します。
-              </p>
-            </div>
-          </div>
-
-          {/* Ad Footer Button */}
-          <div className="w-full pt-4 border-t border-white/10">
-            {adCountdown > 0 ? (
-              <div className="w-full py-3.5 bg-white/10 text-white/50 text-xs font-extrabold rounded-xl text-center">
-                広告視聴中（残り {adCountdown}秒）
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  completeChallenge('challenge_ad');
-                  setShowAdPlayer(false);
-                }}
-                className="w-full py-3.5 bg-amber-400 hover:bg-amber-500 text-black font-black text-sm rounded-xl text-center flex items-center justify-center gap-2 shadow-xl animate-bounce"
-              >
-                <span>報酬を受け取る (+50 XP) 🎉</span>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
     </div>
   );
