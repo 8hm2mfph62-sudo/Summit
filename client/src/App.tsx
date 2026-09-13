@@ -50,9 +50,9 @@ function MountainApp() {
   if (dashboardQuery.isLoading || !dashboard) return <LoadingScreen />;
   if (dashboardQuery.error) return <FailureScreen message={dashboardQuery.error.message} />;
 
-  const handleRecord = async (mountainId: string, climbDate: string, memo: string, photos: string[], weather?: string, companions?: string, companionSkillUsed?: string, companionSkillName?: string, _companionBonusXp?: number, hasRainbowGlow?: boolean, luckyFortune?: string, triviaText?: string) => {
+  const handleRecord = async (mountainId: string, climbDate: string, memo: string, photos: string[], weather?: string, companions?: string, companionSkillUsed?: string, companionSkillName?: string, _companionBonusXp?: number, hasRainbowGlow?: boolean, luckyFortune?: string, triviaText?: string, friendIds?: number[]) => {
     const uploaded = await Promise.all(photos.map(async (photo) => (await uploadPhoto.mutateAsync({ dataUrl: photo })).url));
-    const result = await createRecord.mutateAsync({ mountainId, climbDate, memo, photos: uploaded, weather, companions, companionSkillUsed, companionSkillName, hasRainbowGlow, luckyFortune, triviaText });
+    const result = await createRecord.mutateAsync({ mountainId, climbDate, memo, photos: uploaded, weather, companions, companionSkillUsed, companionSkillName, hasRainbowGlow, luckyFortune, triviaText, friendIds });
     await refresh();
     setRecentRecord(result.record as never);
     setLevelUpTo(result.levelUp ? result.level : null);

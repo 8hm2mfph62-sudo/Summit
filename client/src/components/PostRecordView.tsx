@@ -6,6 +6,7 @@
 import React, { useState, useRef } from 'react';
 import { Mountain, UserProfile, getCompanionEvolutionList } from '../types';
 import { Camera, Calendar, Cloud, Compass, Image as ImageIcon, Sparkles, Trash2, Users, ArrowLeft, Sun, CloudRain, Snowflake } from 'lucide-react';
+import { trpc } from "@/lib/trpc";
 
 interface PostRecordViewProps {
   mountains: Mountain[];
@@ -24,7 +25,8 @@ interface PostRecordViewProps {
     companionBonusXp?: number,
     hasRainbowGlow?: boolean,
     luckyFortune?: string,
-    triviaText?: string
+    triviaText?: string,
+    friendIds?: number[]
   ) => Promise<void>;
 }
 
@@ -61,6 +63,8 @@ export default function PostRecordView({ mountains, mountainId, onBack, userProf
   const [memo, setMemo] = useState('');
   const [weather, setWeather] = useState('晴れ');
   const [companions, setCompanions] = useState('');
+  const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([]);
+  const friendsQuery = trpc.mountain.friends.me.useQuery();
   const [photos, setPhotos] = useState<string[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -217,13 +221,14 @@ export default function PostRecordView({ mountains, mountainId, onBack, userProf
       memo,
       photos,
       weather,
-      companions,
+      companions || friendsQuery.data?.friends.filter((friend) => selectedFriendIds.includes(friend.userId)).map((friend) => friend.nickname).join('、'),
       skillUsed ? 'true' : undefined,
       skillUsed ? skillName : undefined,
       skillUsed ? bonusXp : undefined,
       hasRainbowGlow ? true : undefined,
       luckyFortune ? luckyFortune : undefined,
-      triviaText ? triviaText : undefined
+      triviaText ? triviaText : undefined,
+      selectedFriendIds
     );
   };
 
@@ -391,6 +396,7 @@ export default function PostRecordView({ mountains, mountainId, onBack, userProf
             <Users className="w-3.5 h-3.5 text-emerald-600" />
             <span>同行者 (いなければ空欄)</span>
           </label>
+          {friendsQuery.data?.friends.filter((friend) => friend.status === "accepted").length ? <div className="space-y-2 rounded-xl bg-emerald-50/60 p-3"><p className="text-[10px] font-bold text-emerald-800">山仲間と一緒に登った場合は選択してください</p>{friendsQuery.data.friends.filter((friend) => friend.status === "accepted").map((friend) => <label key={friend.userId} className="flex items-center gap-2 text-xs font-bold text-stone-700"><input type="checkbox" checked={selectedFriendIds.includes(friend.userId)} onChange={(event) => setSelectedFriendIds((ids) => event.target.checked ? [...ids, friend.userId] : ids.filter((id) => id !== friend.userId))} className="h-4 w-4 rounded border-stone-300 text-emerald-700" /><span>{friend.avatarUrl} {friend.nickname}</span></label>)}</div> : null}
           <input
             type="text"
             value={companions}

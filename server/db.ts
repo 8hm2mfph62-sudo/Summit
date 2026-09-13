@@ -1,4 +1,4 @@
-import { eq, and, sql, asc, inArray, desc } from "drizzle-orm";
+import { eq, and, sql, asc, inArray, desc, or } from "drizzle-orm";
 import { invokeLLM } from "./_core/llm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { nanoid } from "nanoid";
@@ -8,6 +8,7 @@ import {
   badges,
   challengeTemplates,
   climbRecords,
+  climbRecordParticipants,
   companionMessages,
   inquiries,
   inquiryReplies,
@@ -37,7 +38,7 @@ export async function getDb() {
   return _db;
 }
 
-async function databaseOrThrow() {
+export async function databaseOrThrow() {
   const db = await getDb();
   if (!db) throw new Error("データベースへ接続できません。時間をおいて再度お試しください。");
   return db;
@@ -47,8 +48,15 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
 
   const db = await databaseOrThrow();
-  const values: InsertUser = { openId: user.openId, lastSignedIn: user.lastSignedIn ?? new Date() };
-  const updateSet: Record<string, unknown> = { lastSignedIn: values.lastSignedIn };
+  const values: InsertUser = {
+    openId: user.openId,
+    lastSignedIn: user.lastSignedIn ?? new Date(),
+    friendCode: user.friendCode ?? `MNT-${nanoid(8).toUpperCase()}`,
+  };
+  const updateSet: Record<string, unknown> = {
+    lastSignedIn: values.lastSignedIn,
+    friendCode: sql`COALESCE(friendCode, VALUES(friendCode))`,
+  };
 
   for (const field of ["name", "email", "loginMethod"] as const) {
     if (user[field] !== undefined) {
@@ -202,8 +210,12 @@ export async function getCatalogue() {
 export async function getDashboard(user: User) {
   const db = await databaseOrThrow();
   const profile = await ensureProfile(user);
-  const [recordRows, challengeRows, badgeRows] = await Promise.all([
-    db.select().from(climbRecords).where(eq(climbRecords.userId, user.id)).orderBy(desc(climbRecords.createdAt)),
+  const participantRows = await db.select({ recordId: climbRecordParticipants.recordId }).from(climbRecordParticipants).where(eq(climbRecordParticipants.userId, user.id));
+  const sharedRecordIds = participantRows.map((row) => row.recordId);
+  const recordRows = await db.select().from(climbRecords).where(sharedRecordIds.length
+    ? or(eq(climbRecords.userId, user.id), inArray(climbRecords.id, sharedRecordIds))
+    : eq(climbRecords.userId, user.id)).orderBy(desc(climbRecords.createdAt));
+  const [challengeRows, badgeRows] = await Promise.all([
     db.select({
       id: challengeTemplates.id,
       title: challengeTemplates.title,
@@ -284,6 +296,10 @@ async function refreshBadges(userId: number, level: number) {
   }
 }
 
+export function buildParticipantRows(recordId: string, friendIds: number[]) {
+  return Array.from(new Set(friendIds)).map((userId) => ({ recordId, userId }));
+}
+
 export async function createClimbRecord(
   user: User,
   input: {
@@ -298,6 +314,7 @@ export async function createClimbRecord(
     hasRainbowGlow?: boolean;
     luckyFortune?: string;
     triviaText?: string;
+    friendIds?: number[];
   },
 ) {
   const db = await databaseOrThrow();
@@ -337,6 +354,9 @@ export async function createClimbRecord(
     luckyFortune: input.luckyFortune || null,
     triviaText: input.triviaText || null,
   });
+  if (input.friendIds?.length) {
+    await db.insert(climbRecordParticipants).values(buildParticipantRows(recordId, input.friendIds));
+  }
   await db.update(userProfiles).set(nextProgress).where(eq(userProfiles.userId, user.id));
   await refreshBadges(user.id, nextProgress.level);
 

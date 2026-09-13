@@ -20,6 +20,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
+  friendCode: varchar("friendCode", { length: 16 }).unique(),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -179,6 +180,27 @@ export const companionMessages = mysqlTable("companionMessages", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("companion_messages_user_created_idx").on(table.userId, table.createdAt)]);
 
+export const friendships = mysqlTable("friendships", {
+  id: int("id").autoincrement().primaryKey(),
+  requesterId: int("requesterId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  addresseeId: int("addresseeId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: mysqlEnum("status", ["pending", "accepted", "declined"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("friendships_pair_unique").on(table.requesterId, table.addresseeId),
+  index("friendships_addressee_status_idx").on(table.addresseeId, table.status),
+]);
+
+export const climbRecordParticipants = mysqlTable("climbRecordParticipants", {
+  recordId: varchar("recordId", { length: 64 }).notNull().references(() => climbRecords.id, { onDelete: "cascade" }),
+  userId: int("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.recordId, table.userId] }),
+  index("record_participants_user_idx").on(table.userId, table.createdAt),
+]);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Mountain = typeof mountains.$inferSelect;
@@ -187,3 +209,5 @@ export type Badge = typeof badges.$inferSelect;
 export type ChallengeTemplate = typeof challengeTemplates.$inferSelect;
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type ClimbRecord = typeof climbRecords.$inferSelect;
+export type Friendship = typeof friendships.$inferSelect;
+export type ClimbRecordParticipant = typeof climbRecordParticipants.$inferSelect;

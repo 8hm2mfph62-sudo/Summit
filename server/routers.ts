@@ -19,6 +19,7 @@ import {
   updateProfile,
 } from "./db";
 import { companionAnimals } from "./progress";
+import { ensureFriendCode, listFriends, requestFriend, respondFriend, removeFriend, getAcceptedFriendIds } from "./friends";
 import { storagePut } from "./storage";
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
@@ -34,7 +35,8 @@ const recordInput = z.object({
   companionSkillName: optionalText(255),
   hasRainbowGlow: z.boolean().optional(),
   luckyFortune: optionalText(255),
-  triviaText: optionalText(5000),
+        triviaText: optionalText(5000),
+  friendIds: z.array(z.number().int().positive()).max(20).optional(),
 });
 
 function toTrpcError(error: unknown): never {
@@ -63,6 +65,22 @@ export const appRouter = router({
     }),
   }),
   mountain: router({
+    friends: router({
+      me: protectedProcedure.query(async ({ ctx }) => {
+        try {
+          return { friendCode: await ensureFriendCode(ctx.user), friends: await listFriends(ctx.user) };
+        } catch (error) { return toTrpcError(error); }
+      }),
+      request: protectedProcedure.input(z.object({ code: z.string().trim().min(4).max(16) })).mutation(async ({ ctx, input }) => {
+        try { return await requestFriend(ctx.user, input.code); } catch (error) { return toTrpcError(error); }
+      }),
+      respond: protectedProcedure.input(z.object({ friendshipId: z.number().int().positive(), accept: z.boolean() })).mutation(async ({ ctx, input }) => {
+        try { return await respondFriend(ctx.user, input.friendshipId, input.accept); } catch (error) { return toTrpcError(error); }
+      }),
+      remove: protectedProcedure.input(z.object({ friendshipId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        try { return await removeFriend(ctx.user, input.friendshipId); } catch (error) { return toTrpcError(error); }
+      }),
+    }),
     dashboard: protectedProcedure.query(async ({ ctx }) => {
       try {
         return await getDashboard(ctx.user);
@@ -91,7 +109,8 @@ export const appRouter = router({
     records: router({
       create: protectedProcedure.input(recordInput).mutation(async ({ ctx, input }) => {
         try {
-          return await createClimbRecord(ctx.user, input);
+          const friendIds = await getAcceptedFriendIds(ctx.user, input.friendIds || []);
+        return await createClimbRecord(ctx.user, { ...input, friendIds });
         } catch (error) {
           return toTrpcError(error);
         }
