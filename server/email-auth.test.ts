@@ -31,7 +31,8 @@ describe("email OTP authentication", () => {
   it("normalizes email addresses before creating stable identities", () => {
     expect(normalizeEmail("  Climber@Example.COM ")).toBe("climber@example.com");
     expect(emailOpenId(" Climber@Example.COM ")).toBe(emailOpenId("climber@example.com"));
-    expect(emailOpenId("climber@example.com")).toMatch(/^email:[a-f0-9]{64}$/);
+    expect(emailOpenId("climber@example.com")).toMatch(/^email:[a-f0-9]{58}$/);
+    expect(emailOpenId("climber@example.com")).toHaveLength(64);
   });
 
   it("stores only a hash of the email-bound OTP", () => {

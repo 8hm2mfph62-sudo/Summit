@@ -43,8 +43,17 @@ const recordInput = z.object({
 
 function toTrpcError(error: unknown): never {
   if (error instanceof TRPCError) throw error;
-  const message = error instanceof Error ? error.message : "データ処理中にエラーが発生しました。";
-  throw new TRPCError({ code: "BAD_REQUEST", message });
+  console.error("[tRPC] Request failed", error);
+  throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "処理中にエラーが発生しました。時間をおいてもう一度お試しください。" });
+}
+
+function toOtpTrpcError(error: unknown): never {
+  const message = error instanceof Error ? error.message : "認証コードを確認できませんでした。";
+  if (message.includes("認証コード") || message.includes("メール認証")) {
+    throw new TRPCError({ code: "BAD_REQUEST", message });
+  }
+  console.error("[Auth] OTP verification failed", error);
+  throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "ログインを完了できませんでした。新しい認証コードを送って、もう一度お試しください。" });
 }
 
 export const appRouter = router({
@@ -55,7 +64,7 @@ export const appRouter = router({
       try {
         return await sendOtp(input.email);
       } catch (error) {
-        return toTrpcError(error);
+        return toOtpTrpcError(error);
       }
     }),
     verifyOtp: publicProcedure.input(z.object({ email: z.string().trim().email().max(320), otp: z.string().trim().regex(/^\d{6}$/) })).mutation(async ({ ctx, input }) => {
@@ -64,7 +73,7 @@ export const appRouter = router({
         await issueEmailSession(user, ctx.req, ctx.res);
         return { success: true } as const;
       } catch (error) {
-        return toTrpcError(error);
+        return toOtpTrpcError(error);
       }
     }),
     logout: publicProcedure.mutation(({ ctx }) => {

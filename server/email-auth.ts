@@ -1,7 +1,7 @@
 import { createHash, randomInt } from "node:crypto";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { emailLoginTokens } from "../drizzle/schema";
-import { databaseOrThrow, getUserByOpenId, upsertUser } from "./db";
+import { databaseOrThrow, upsertEmailUser } from "./db";
 import { ENV } from "./_core/env";
 
 export const OTP_TTL_MS = 10 * 60 * 1000;
@@ -31,7 +31,9 @@ export function hashOtp(email: string, otp: string): string {
 }
 
 export function emailOpenId(email: string): string {
-  return `email:${createHash("sha256").update(normalizeEmail(email)).digest("hex")}`;
+  // `users.openId` is VARCHAR(64). Keep the "email:" namespace while retaining
+  // 232 bits of the SHA-256 digest, which remains collision-resistant here.
+  return `email:${createHash("sha256").update(normalizeEmail(email)).digest("hex").slice(0, 58)}`;
 }
 
 export function isOtpExpired(expiresAt: Date, now = new Date()): boolean {
@@ -127,8 +129,5 @@ export async function consumeOtp(email: string, otp: string) {
   const now = new Date();
   const openId = emailOpenId(normalizedEmail);
   const displayName = normalizedEmail.split("@")[0]?.slice(0, 80) || "登山者";
-  await upsertUser({ openId, email: normalizedEmail, name: displayName, loginMethod: "email", lastSignedIn: now });
-  const user = await getUserByOpenId(openId);
-  if (!user) throw new Error("アカウントを作成できませんでした。");
-  return user;
+  return upsertEmailUser({ openId, email: normalizedEmail, name: displayName, loginMethod: "email", lastSignedIn: now });
 }

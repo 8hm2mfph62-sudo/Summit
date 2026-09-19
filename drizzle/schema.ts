@@ -13,7 +13,7 @@ import {
   varchar,
 } from "drizzle-orm/mysql-core";
 
-/** Core identity table managed by email magic-link authentication. */
+/** Core identity table managed by email OTP authentication. */
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),

@@ -83,6 +83,50 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result[0];
+}
+
+/**
+ * Creates an email-authenticated identity or converts a legacy identity with
+ * the same verified email. Updating the existing row preserves profiles,
+ * records, friendships, and all other userId-based data.
+ */
+export async function upsertEmailUser(user: InsertUser): Promise<User> {
+  if (!user.openId?.startsWith("email:") || !user.email) {
+    throw new Error("メール認証ユーザーの情報が不正です。");
+  }
+
+  const db = await databaseOrThrow();
+  const existingEmailUser = await getUserByOpenId(user.openId);
+  if (existingEmailUser) {
+    await upsertUser({ ...user, friendCode: existingEmailUser.friendCode ?? undefined });
+    const refreshed = await getUserByOpenId(user.openId);
+    if (refreshed) return refreshed;
+  }
+
+  const legacyUser = await getUserByEmail(user.email);
+  if (legacyUser) {
+    await db.update(users).set({
+      openId: user.openId,
+      name: user.name ?? legacyUser.name,
+      email: user.email,
+      loginMethod: "email",
+      lastSignedIn: user.lastSignedIn ?? new Date(),
+    }).where(eq(users.id, legacyUser.id));
+    const migrated = await getUserByOpenId(user.openId);
+    if (migrated) return migrated;
+  }
+
+  await upsertUser(user);
+  const created = await getUserByOpenId(user.openId);
+  if (!created) throw new Error("メール認証アカウントを作成できませんでした。");
+  return created;
+}
+
 function toMountain(row: typeof mountains.$inferSelect) {
   return {
     id: row.id,
