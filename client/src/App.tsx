@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Mountain, Home, Search, User, LogIn, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
@@ -29,8 +29,8 @@ function MountainApp() {
   const uploadPhoto = trpc.mountain.photos.upload.useMutation();
   const resetProgress = trpc.mountain.progress.reset.useMutation();
   const completeChallenge = trpc.mountain.challenges.complete.useMutation();
-  const sendMagicLink = trpc.auth.sendMagicLink.useMutation();
-  const verifyMagicLink = trpc.auth.verifyMagicLink.useMutation();
+  const sendOtp = trpc.auth.sendOtp.useMutation();
+  const verifyOtp = trpc.auth.verifyOtp.useMutation();
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [selectedMountainId, setSelectedMountainId] = useState<string | null>(null);
   const [recordingMountainId, setRecordingMountainId] = useState<string | null>(null);
@@ -38,21 +38,6 @@ function MountainApp() {
   const [recentRecord, setRecentRecord] = useState<any | null>(null);
   const [levelUpTo, setLevelUpTo] = useState<number | null>(null);
   const [showLevelUp, setShowLevelUp] = useState(false);
-
-  useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get("magic_token");
-    if (!token || verifyMagicLink.isPending) return;
-    void verifyMagicLink.mutateAsync({ token })
-      .then(async () => {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        await utils.auth.me.invalidate();
-        toast.success("ログインしました。Mountainへようこそ。");
-      })
-      .catch((error) => {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        toast.error(error instanceof Error ? error.message : "ログインリンクを確認できませんでした。");
-      });
-  }, [utils.auth.me, verifyMagicLink]);
 
   const catalogue = catalogueQuery.data;
   const dashboard = dashboardQuery.data;
@@ -62,7 +47,7 @@ function MountainApp() {
 
   if (authLoading || catalogueQuery.isLoading || !catalogue) return <LoadingScreen />;
   if (catalogueQuery.error) return <FailureScreen message={catalogueQuery.error.message} />;
-  if (!isAuthenticated || !user) return <WelcomeScreen onSend={async (email) => { await sendMagicLink.mutateAsync({ email, origin: window.location.origin }); }} isSending={sendMagicLink.isPending} />;
+  if (!isAuthenticated || !user) return <WelcomeScreen onSend={async (email) => { await sendOtp.mutateAsync({ email }); }} onVerify={async (email, otp) => { await verifyOtp.mutateAsync({ email, otp }); await utils.auth.me.invalidate(); toast.success("ログインしました。Mountainへようこそ。"); }} isSending={sendOtp.isPending} isVerifying={verifyOtp.isPending} />;
   if (dashboardQuery.isLoading || !dashboard) return <LoadingScreen />;
   if (dashboardQuery.error) return <FailureScreen message={dashboardQuery.error.message} />;
 
@@ -91,20 +76,25 @@ function MountainApp() {
 function TabButton({ icon, label, active, onClick }: { icon: ReactNode; label: string; active: boolean; onClick: () => void }) { return <button onClick={onClick} className={`flex flex-col items-center gap-1 py-2 px-2 rounded-xl transition-colors active:scale-95 ${active ? "text-emerald-700" : "text-gray-400 hover:text-gray-600"}`}>{icon}<span className="text-[10px] font-bold">{label}</span></button>; }
 function LoadingScreen() { return <div className="min-h-screen bg-[#FDFBF4] flex flex-col items-center justify-center gap-3 text-emerald-800"><Loader2 className="h-7 w-7 animate-spin" /><p className="text-xs font-black">Peak Album を準備しています</p></div>; }
 function FailureScreen({ message }: { message: string }) { return <div className="min-h-screen bg-[#FDFBF4] flex flex-col items-center justify-center p-6 text-center"><p className="text-sm font-black text-stone-800">データを読み込めませんでした。</p><p className="mt-2 text-xs text-stone-500">{message}</p></div>; }
-function WelcomeScreen({ onSend, isSending }: { onSend: (email: string) => Promise<void>; isSending: boolean }) {
+function WelcomeScreen({ onSend, onVerify, isSending, isVerifying }: { onSend: (email: string) => Promise<void>; onVerify: (email: string, otp: string) => Promise<void>; isSending: boolean; isVerifying: boolean }) {
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const submit = async (event: React.FormEvent) => {
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState<"email" | "otp">("email");
+  const submitEmail = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
       await onSend(email);
-      setSent(true);
-      toast.success("ログインリンクをメールで送信しました。");
+      setStep("otp");
+      toast.success("6桁の認証コードをメールで送信しました。");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "メールを送信できませんでした。");
+      toast.error(error instanceof Error ? error.message : "認証コードを送信できませんでした。");
     }
   };
-  return <div className="min-h-screen bg-stone-100 flex justify-center"><div className="w-full max-w-md bg-[#FDFBF4] flex flex-col justify-center p-7 text-center"><div className="forest-gradient rounded-[32px] px-6 py-10 text-white shadow-xl"><p className="text-5xl">🏔️</p><p className="mt-4 text-[10px] font-black tracking-[0.24em] text-green-200">YOUR CLIMBING JOURNAL</p><h1 className="mt-2 text-3xl font-black font-display-heavy">Peak Album</h1><p className="mt-4 text-sm leading-relaxed text-green-100">登った山、写真、思い出をあなた専用のアルバムに記録します。メールアドレスだけで始められます。</p><form onSubmit={submit} className="mt-7 space-y-3 text-left"><label htmlFor="login-email" className="block text-xs font-bold text-green-100">メールアドレス</label><input id="login-email" type="email" required autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setSent(false); }} placeholder="you@example.com" className="w-full rounded-2xl border-0 px-4 py-3.5 text-sm text-stone-900 outline-none ring-2 ring-transparent focus:ring-[#FFD700]" /><button disabled={isSending} className="w-full rounded-2xl bg-[#FFD700] px-5 py-3.5 text-sm font-black text-emerald-950 shadow-md transition-transform active:scale-[0.97] disabled:cursor-wait disabled:opacity-60"><LogIn className="mr-1.5 inline h-4 w-4" />{isSending ? "送信中…" : "ログインリンクを送る"}</button></form>{sent && <p className="mt-4 text-xs font-bold text-green-100">受信トレイを確認してください。リンクは15分間有効です。</p>}</div></div></div>;
+  const submitOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try { await onVerify(email, otp); } catch (error) { toast.error(error instanceof Error ? error.message : "認証コードを確認できませんでした。"); }
+  };
+  return <div className="min-h-screen bg-stone-100 flex justify-center"><div className="w-full max-w-md bg-[#FDFBF4] flex flex-col justify-center p-7 text-center"><div className="forest-gradient rounded-[32px] px-6 py-10 text-white shadow-xl"><p className="text-5xl">🏔️</p><p className="mt-4 text-[10px] font-black tracking-[0.24em] text-green-200">YOUR CLIMBING JOURNAL</p><h1 className="mt-2 text-3xl font-black font-display-heavy">Peak Album</h1><p className="mt-4 text-sm leading-relaxed text-green-100">登った山、写真、思い出をあなた専用のアルバムに記録します。メールアドレスだけで始められます。</p>{step === "email" ? <form onSubmit={submitEmail} className="mt-7 space-y-3 text-left"><label htmlFor="login-email" className="block text-xs font-bold text-green-100">メールアドレス</label><input id="login-email" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className="w-full rounded-2xl border-0 px-4 py-3.5 text-sm text-stone-900 outline-none ring-2 ring-transparent focus:ring-[#FFD700]" /><button disabled={isSending} className="w-full rounded-2xl bg-[#FFD700] px-5 py-3.5 text-sm font-black text-emerald-950 shadow-md transition-transform active:scale-[0.97] disabled:cursor-wait disabled:opacity-60"><LogIn className="mr-1.5 inline h-4 w-4" />{isSending ? "送信中…" : "認証コードを送る"}</button></form> : <form onSubmit={submitOtp} className="mt-7 space-y-3 text-left"><p className="text-xs text-green-100">{email} に送った6桁のコードを入力してください。</p><label htmlFor="login-otp" className="block text-xs font-bold text-green-100">ワンタイムパスワード</label><input id="login-otp" type="text" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="\\d{6}" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\\D/g, "").slice(0, 6))} placeholder="000000" className="w-full rounded-2xl border-0 px-4 py-3.5 text-center text-2xl tracking-[0.35em] text-stone-900 outline-none ring-2 ring-transparent focus:ring-[#FFD700]" /><button disabled={isVerifying || otp.length !== 6} className="w-full rounded-2xl bg-[#FFD700] px-5 py-3.5 text-sm font-black text-emerald-950 shadow-md transition-transform active:scale-[0.97] disabled:cursor-wait disabled:opacity-60">{isVerifying ? "確認中…" : "コードを確認してログイン"}</button><div className="flex items-center justify-between text-xs"><button type="button" onClick={() => { setStep("email"); setOtp(""); }} className="font-bold text-green-100 underline">メールアドレスを変更</button><button type="button" disabled={isSending} onClick={async () => { try { await onSend(email); setOtp(""); toast.success("新しい認証コードを送信しました。"); } catch (error) { toast.error(error instanceof Error ? error.message : "再送できませんでした。"); } }} className="font-bold text-[#FFD700] underline disabled:opacity-50">コードを再送</button></div></form>}</div></div></div>;
 }
 
 export default function App() { return <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster /><MountainApp /></TooltipProvider></ThemeProvider></ErrorBoundary>; }

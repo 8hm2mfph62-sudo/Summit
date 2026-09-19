@@ -21,7 +21,7 @@ import {
 import { companionAnimals } from "./progress";
 import { ensureFriendCode, listFriends, requestFriend, respondFriend, removeFriend, getAcceptedFriendIds } from "./friends";
 import { storagePut } from "./storage";
-import { consumeMagicLink, sendMagicLink } from "./email-auth";
+import { consumeOtp, sendOtp } from "./email-auth";
 import { issueEmailSession } from "./email-session";
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
@@ -51,16 +51,16 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
-    sendMagicLink: publicProcedure.input(z.object({ email: z.string().trim().email().max(320), origin: z.string().url().max(512) })).mutation(async ({ ctx, input }) => {
+    sendOtp: publicProcedure.input(z.object({ email: z.string().trim().email().max(320) })).mutation(async ({ input }) => {
       try {
-        return await sendMagicLink(input.email, input.origin);
+        return await sendOtp(input.email);
       } catch (error) {
         return toTrpcError(error);
       }
     }),
-    verifyMagicLink: publicProcedure.input(z.object({ token: z.string().trim().min(32).max(128) })).mutation(async ({ ctx, input }) => {
+    verifyOtp: publicProcedure.input(z.object({ email: z.string().trim().email().max(320), otp: z.string().trim().regex(/^\d{6}$/) })).mutation(async ({ ctx, input }) => {
       try {
-        const user = await consumeMagicLink(input.token);
+        const user = await consumeOtp(input.email, input.otp);
         await issueEmailSession(user, ctx.req, ctx.res);
         return { success: true } as const;
       } catch (error) {
