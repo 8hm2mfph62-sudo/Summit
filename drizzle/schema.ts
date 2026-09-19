@@ -13,7 +13,7 @@ import {
   varchar,
 } from "drizzle-orm/mysql-core";
 
-/** Core identity table managed by the Manus OAuth callback. */
+/** Core identity table managed by email magic-link authentication. */
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
@@ -26,6 +26,15 @@ export const users = mysqlTable("users", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
+
+export const emailLoginTokens = mysqlTable("emailLoginTokens", {
+  id: int("id").autoincrement().primaryKey(),
+  email: varchar("email", { length: 320 }).notNull(),
+  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("email_login_tokens_email_idx").on(table.email)]);
 
 /** Mountain catalogue. The former client-side catalogue is migrated here. */
 export const mountains = mysqlTable("mountains", {
