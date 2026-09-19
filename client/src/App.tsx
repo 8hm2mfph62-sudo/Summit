@@ -62,7 +62,7 @@ function MountainApp() {
 
   if (authLoading || catalogueQuery.isLoading || !catalogue) return <LoadingScreen />;
   if (catalogueQuery.error) return <FailureScreen message={catalogueQuery.error.message} />;
-  if (!isAuthenticated || !user) return <WelcomeScreen onSend={async (email) => { await sendMagicLink.mutateAsync({ email }); }} isSending={sendMagicLink.isPending} />;
+  if (!isAuthenticated || !user) return <WelcomeScreen onSend={async (email) => { await sendMagicLink.mutateAsync({ email, origin: window.location.origin }); }} isSending={sendMagicLink.isPending} />;
   if (dashboardQuery.isLoading || !dashboard) return <LoadingScreen />;
   if (dashboardQuery.error) return <FailureScreen message={dashboardQuery.error.message} />;
 

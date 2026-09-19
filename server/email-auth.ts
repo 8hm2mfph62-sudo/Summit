@@ -1,10 +1,25 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, isNull, gt } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { emailLoginTokens } from "../drizzle/schema";
 import { databaseOrThrow, getUserByOpenId, upsertUser } from "./db";
 import { ENV } from "./_core/env";
 
 export const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
+
+export type MagicLinkRecord = {
+  id: number | string;
+  email: string;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt?: Date | null;
+};
+
+export type MagicLinkRepository = {
+  supersede: (email: string, now: Date) => Promise<void>;
+  insert: (record: Omit<MagicLinkRecord, "id" | "usedAt">) => Promise<void>;
+  findUsable: (tokenHash: string, now: Date) => Promise<MagicLinkRecord | undefined>;
+  markUsed: (id: number | string, now: Date) => Promise<boolean>;
+};
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -22,38 +37,64 @@ export function isMagicLinkExpired(expiresAt: Date, now = new Date()): boolean {
   return expiresAt.getTime() <= now.getTime();
 }
 
-async function createMagicToken(email: string) {
-  const db = await databaseOrThrow();
-  const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MS);
-
-  // A new request supersedes older outstanding links for the same address.
-  await db.update(emailLoginTokens)
-    .set({ usedAt: new Date() })
-    .where(and(eq(emailLoginTokens.email, email), isNull(emailLoginTokens.usedAt)));
-  await db.insert(emailLoginTokens).values({
-    email,
-    tokenHash: hashMagicToken(token),
-    expiresAt,
-  });
-  return { token, expiresAt };
+export function normalizeAppOrigin(origin: string): string {
+  const url = new URL(origin);
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("ログインURLの送信元が不正です。");
+  return url.origin;
 }
 
-function getRequestOrigin(req: { protocol: string; headers: Record<string, unknown> }): string {
-  const forwardedProto = typeof req.headers["x-forwarded-proto"] === "string"
-    ? req.headers["x-forwarded-proto"].split(",")[0]?.trim()
-    : undefined;
-  const protocol = forwardedProto || req.protocol || "https";
-  const host = typeof req.headers.host === "string" ? req.headers.host : undefined;
-  if (!host) throw new Error("ログインURLを作成できませんでした。");
-  return `${protocol}://${host}`;
-}
-
-export async function sendMagicLink(emailInput: string, req: { protocol: string; headers: Record<string, unknown> }) {
+export async function createMagicLink(emailInput: string, repository: MagicLinkRepository, now = new Date()) {
   const email = normalizeEmail(emailInput);
-  const { token, expiresAt } = await createMagicToken(email);
-  const configuredOrigin = ENV.appUrl.replace(/\/$/, "");
-  const origin = configuredOrigin || getRequestOrigin(req);
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(now.getTime() + MAGIC_LINK_TTL_MS);
+  await repository.supersede(email, now);
+  await repository.insert({ email, tokenHash: hashMagicToken(token), expiresAt });
+  return { email, token, expiresAt };
+}
+
+export async function consumeMagicLinkWithRepository(token: string, repository: MagicLinkRepository, now = new Date()) {
+  const row = await repository.findUsable(hashMagicToken(token), now);
+  if (!row || isMagicLinkExpired(row.expiresAt, now)) {
+    throw new Error("ログインリンクが無効または期限切れです。もう一度メールを送信してください。");
+  }
+  const marked = await repository.markUsed(row.id, now);
+  if (!marked) throw new Error("このログインリンクはすでに使用されています。");
+  return { email: normalizeEmail(row.email), expiresAt: row.expiresAt };
+}
+
+function drizzleRepository(db: Awaited<ReturnType<typeof databaseOrThrow>>): MagicLinkRepository {
+  return {
+    supersede: async (email, now) => {
+      await db.update(emailLoginTokens)
+        .set({ usedAt: now })
+        .where(and(eq(emailLoginTokens.email, email), isNull(emailLoginTokens.usedAt)));
+    },
+    insert: async (record) => {
+      await db.insert(emailLoginTokens).values({
+        email: record.email,
+        tokenHash: record.tokenHash,
+        expiresAt: record.expiresAt,
+      });
+    },
+    findUsable: async (tokenHash, now) => {
+      const rows = await db.select().from(emailLoginTokens).where(
+        and(eq(emailLoginTokens.tokenHash, tokenHash), isNull(emailLoginTokens.usedAt), gt(emailLoginTokens.expiresAt, now)),
+      ).limit(1);
+      return rows[0];
+    },
+    markUsed: async (id, now) => {
+      const result = await db.update(emailLoginTokens).set({ usedAt: now }).where(
+        and(eq(emailLoginTokens.id, Number(id)), isNull(emailLoginTokens.usedAt)),
+      );
+      return result[0].affectedRows === 1;
+    },
+  };
+}
+
+export async function sendMagicLink(emailInput: string, originInput: string) {
+  const db = await databaseOrThrow();
+  const { email, token, expiresAt } = await createMagicLink(emailInput, drizzleRepository(db));
+  const origin = normalizeAppOrigin(originInput);
   const loginUrl = `${origin}/?magic_token=${encodeURIComponent(token)}`;
   const from = ENV.resendFromEmail || "Mountain <onboarding@resend.dev>";
 
@@ -82,27 +123,16 @@ export async function sendMagicLink(emailInput: string, req: { protocol: string;
 
 export async function consumeMagicLink(token: string) {
   const db = await databaseOrThrow();
-  const tokenHash = hashMagicToken(token);
+  const { email } = await consumeMagicLinkWithRepository(token, drizzleRepository(db));
   const now = new Date();
-  const rows = await db.select().from(emailLoginTokens).where(
-    and(eq(emailLoginTokens.tokenHash, tokenHash), isNull(emailLoginTokens.usedAt), gt(emailLoginTokens.expiresAt, now)),
-  ).limit(1);
-  const row = rows[0];
-  if (!row || isMagicLinkExpired(row.expiresAt, now)) throw new Error("ログインリンクが無効または期限切れです。もう一度メールを送信してください。");
-
-  const updated = await db.update(emailLoginTokens).set({ usedAt: now }).where(
-    and(eq(emailLoginTokens.id, row.id), isNull(emailLoginTokens.usedAt), gt(emailLoginTokens.expiresAt, now)),
-  );
-  if (updated[0].affectedRows !== 1) throw new Error("このログインリンクはすでに使用されています。");
-
-  const openId = emailOpenId(row.email);
-  const displayName = row.email.split("@")[0]?.slice(0, 80) || "登山者";
-  await upsertUser({ openId, email: row.email, name: displayName, loginMethod: "email", lastSignedIn: now });
+  const openId = emailOpenId(email);
+  const displayName = email.split("@")[0]?.slice(0, 80) || "登山者";
+  await upsertUser({ openId, email, name: displayName, loginMethod: "email", lastSignedIn: now });
   const user = await getUserByOpenId(openId);
   if (!user) throw new Error("アカウントを作成できませんでした。");
   return user;
 }
 
-export function buildMagicLinkEmailForTest(email: string, token: string, origin: string) {
-  return `${origin.replace(/\/$/, "")}/?magic_token=${encodeURIComponent(token)}&email=${encodeURIComponent(normalizeEmail(email))}`;
+export function buildMagicLinkUrl(email: string, token: string, origin: string) {
+  return `${normalizeAppOrigin(origin)}/?magic_token=${encodeURIComponent(token)}&email=${encodeURIComponent(normalizeEmail(email))}`;
 }

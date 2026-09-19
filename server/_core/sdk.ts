@@ -285,26 +285,19 @@ class SDKServer {
       return buildCronUser(userInfo);
     }
 
+    if (!session.openId.startsWith("email:")) {
+      throw ForbiddenError("Email login is required");
+    }
+
     const sessionUserId = session.openId;
     const signedInAt = new Date();
     let user = await db.getUserByOpenId(sessionUserId);
 
-    // If user not in DB, sync from OAuth server automatically
+    // Email users are provisioned by the magic-link verification flow. Never
+    // fall back to the Manus OAuth API here: that would re-enable a disabled
+    // login path for old or forged session tokens.
     if (!user) {
-      try {
-        const userInfo = await this.getUserInfoWithJwt(sessionToken ?? "");
-        await db.upsertUser({
-          openId: userInfo.openId,
-          name: userInfo.name || null,
-          email: userInfo.email ?? null,
-          loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-          lastSignedIn: signedInAt,
-        });
-        user = await db.getUserByOpenId(userInfo.openId);
-      } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
-      }
+      throw ForbiddenError("Email user not found");
     }
 
     if (!user) {

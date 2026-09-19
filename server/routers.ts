@@ -2,7 +2,6 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
@@ -23,7 +22,7 @@ import { companionAnimals } from "./progress";
 import { ensureFriendCode, listFriends, requestFriend, respondFriend, removeFriend, getAcceptedFriendIds } from "./friends";
 import { storagePut } from "./storage";
 import { consumeMagicLink, sendMagicLink } from "./email-auth";
-import { ONE_YEAR_MS } from "@shared/const";
+import { issueEmailSession } from "./email-session";
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 const photoUrlSchema = z.string().regex(/^\/manus-storage\//, "保存済み写真URLを指定してください。").max(2048);
@@ -52,9 +51,9 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
-    sendMagicLink: publicProcedure.input(z.object({ email: z.string().trim().email().max(320) })).mutation(async ({ ctx, input }) => {
+    sendMagicLink: publicProcedure.input(z.object({ email: z.string().trim().email().max(320), origin: z.string().url().max(512) })).mutation(async ({ ctx, input }) => {
       try {
-        return await sendMagicLink(input.email, ctx.req);
+        return await sendMagicLink(input.email, input.origin);
       } catch (error) {
         return toTrpcError(error);
       }
@@ -62,9 +61,7 @@ export const appRouter = router({
     verifyMagicLink: publicProcedure.input(z.object({ token: z.string().trim().min(32).max(128) })).mutation(async ({ ctx, input }) => {
       try {
         const user = await consumeMagicLink(input.token);
-        const sessionToken = await sdk.createSessionToken(user.openId, { name: user.name || user.email || "登山者", expiresInMs: ONE_YEAR_MS });
-        const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        await issueEmailSession(user, ctx.req, ctx.res);
         return { success: true } as const;
       } catch (error) {
         return toTrpcError(error);
