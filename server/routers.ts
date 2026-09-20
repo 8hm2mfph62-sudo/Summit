@@ -17,6 +17,7 @@ import {
   sendCompanionMessage,
   updateClimbRecord,
   updateProfile,
+  getOrCreateGuestUser,
 } from "./db";
 import { companionAnimals } from "./progress";
 import {
@@ -30,6 +31,7 @@ import {
 import { storagePut } from "./storage";
 import { loginWithPassword, registerWithPassword } from "./password-auth";
 import { issuePasswordSession } from "./password-session";
+import { issueGuestSession } from "./guest-session";
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 const photoUrlSchema = z
@@ -81,6 +83,17 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    guest: publicProcedure
+      .input(z.object({ guestKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const user = await getOrCreateGuestUser(input.guestKey);
+          await issueGuestSession(user, ctx.req, ctx.res);
+          return { success: true } as const;
+        } catch (error) {
+          return toTrpcError(error);
+        }
+      }),
     register: publicProcedure
       .input(
         z.object({

@@ -1,5 +1,12 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Mountain, Home, Search, User, LogIn, Loader2 } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { Mountain, Home, Search, User, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,6 +25,28 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 type Tab = "home" | "search" | "album" | "mypage";
+const GUEST_KEY_STORAGE_KEY = "mountain-guest-key";
+
+function createGuestKey(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(""))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function getGuestKey(): string {
+  try {
+    const existing = localStorage.getItem(GUEST_KEY_STORAGE_KEY);
+    if (existing && /^[A-Za-z0-9_-]{43}$/.test(existing)) return existing;
+    const created = createGuestKey();
+    localStorage.setItem(GUEST_KEY_STORAGE_KEY, created);
+    return created;
+  } catch {
+    return createGuestKey();
+  }
+}
 
 function MountainApp() {
   const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
@@ -31,8 +60,9 @@ function MountainApp() {
   const uploadPhoto = trpc.mountain.photos.upload.useMutation();
   const resetProgress = trpc.mountain.progress.reset.useMutation();
   const completeChallenge = trpc.mountain.challenges.complete.useMutation();
-  const register = trpc.auth.register.useMutation();
-  const login = trpc.auth.login.useMutation();
+  const guest = trpc.auth.guest.useMutation();
+  const attemptedGuestAccess = useRef(false);
+  const [guestError, setGuestError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [selectedMountainId, setSelectedMountainId] = useState<string | null>(
     null
@@ -62,6 +92,25 @@ function MountainApp() {
       utils.catalogue.get.invalidate(),
     ]);
   };
+  const enterAsGuest = useCallback(async () => {
+    setGuestError(null);
+    try {
+      await guest.mutateAsync({ guestKey: getGuestKey() });
+      await utils.auth.me.invalidate();
+    } catch (error) {
+      setGuestError(
+        error instanceof Error
+          ? error.message
+          : "ゲスト利用を開始できませんでした。もう一度お試しください。"
+      );
+    }
+  }, [guest, utils.auth.me]);
+
+  useEffect(() => {
+    if (authLoading || isAuthenticated || attemptedGuestAccess.current) return;
+    attemptedGuestAccess.current = true;
+    void enterAsGuest();
+  }, [authLoading, enterAsGuest, isAuthenticated]);
 
   if (authLoading || catalogueQuery.isLoading || !catalogue)
     return <LoadingScreen />;
@@ -69,19 +118,13 @@ function MountainApp() {
     return <FailureScreen message={catalogueQuery.error.message} />;
   if (!isAuthenticated || !user)
     return (
-      <WelcomeScreen
-        onLogin={async (email, password) => {
-          await login.mutateAsync({ email, password });
-          await utils.auth.me.invalidate();
-          toast.success("ログインしました。Mountainへようこそ。");
+      <GuestEntryScreen
+        isStarting={guest.isPending}
+        error={guestError}
+        onRetry={() => {
+          attemptedGuestAccess.current = true;
+          void enterAsGuest();
         }}
-        onRegister={async (email, password) => {
-          await register.mutateAsync({ email, password });
-          await utils.auth.me.invalidate();
-          toast.success("アカウントを作成しました。Mountainへようこそ。");
-        }}
-        isLoggingIn={login.isPending}
-        isRegistering={register.isPending}
       />
     );
   if (dashboardQuery.isLoading || !dashboard) return <LoadingScreen />;
@@ -360,40 +403,15 @@ function FailureScreen({ message }: { message: string }) {
     </div>
   );
 }
-function WelcomeScreen({
-  onLogin,
-  onRegister,
-  isLoggingIn,
-  isRegistering,
+function GuestEntryScreen({
+  isStarting,
+  error,
+  onRetry,
 }: {
-  onLogin: (email: string, password: string) => Promise<void>;
-  onRegister: (email: string, password: string) => Promise<void>;
-  isLoggingIn: boolean;
-  isRegistering: boolean;
+  isStarting: boolean;
+  error: string | null;
+  onRetry: () => void;
 }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const isRegisteringMode = mode === "register";
-  const isPending = isLoggingIn || isRegistering;
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (isRegisteringMode && password !== passwordConfirmation) {
-      toast.error("確認用パスワードが一致しません。");
-      return;
-    }
-    try {
-      if (isRegisteringMode) await onRegister(email, password);
-      else await onLogin(email, password);
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "ログインを完了できませんでした。"
-      );
-    }
-  };
   return (
     <div className="min-h-screen bg-stone-100 flex justify-center">
       <div className="w-full max-w-md bg-[#FDFBF4] flex flex-col justify-center p-7 text-center">
@@ -406,96 +424,35 @@ function WelcomeScreen({
             Peak Album
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-green-100">
-            登った山、写真、思い出をあなた専用のアルバムに記録します。メールアドレスとパスワードだけで始められます。
+            登った山、写真、思い出をあなた専用のアルバムに記録します。ログインなしですぐに始められます。
           </p>
-          <form onSubmit={submit} className="mt-7 space-y-3 text-left">
-            <label
-              htmlFor="login-email"
-              className="block text-xs font-bold text-green-100"
-            >
-              メールアドレス
-            </label>
-            <input
-              id="login-email"
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={event => setEmail(event.target.value)}
-              placeholder="you@example.com"
-              className="w-full rounded-2xl border-0 px-4 py-3.5 text-sm text-stone-900 outline-none ring-2 ring-transparent focus:ring-[#FFD700]"
-            />
-            <label
-              htmlFor="login-password"
-              className="block text-xs font-bold text-green-100"
-            >
-              パスワード
-            </label>
-            <input
-              id="login-password"
-              type="password"
-              required
-              minLength={8}
-              maxLength={128}
-              autoComplete={
-                isRegisteringMode ? "new-password" : "current-password"
-              }
-              value={password}
-              onChange={event => setPassword(event.target.value)}
-              placeholder="8文字以上"
-              className="w-full rounded-2xl border-0 px-4 py-3.5 text-sm text-stone-900 outline-none ring-2 ring-transparent focus:ring-[#FFD700]"
-            />
-            {isRegisteringMode && (
-              <>
-                <label
-                  htmlFor="login-password-confirmation"
-                  className="block text-xs font-bold text-green-100"
+          <div className="mt-8 space-y-4">
+            <div className="flex items-center justify-center gap-3 rounded-2xl bg-white/10 px-4 py-4 text-left">
+              <Loader2
+                className={`h-5 w-5 shrink-0 ${isStarting ? "animate-spin" : ""}`}
+              />
+              <p className="text-sm font-bold">
+                {isStarting
+                  ? "あなたの登山アルバムを準備中…"
+                  : "ゲストとして入場します"}
+              </p>
+            </div>
+            {error && (
+              <div className="rounded-2xl bg-red-50 p-4 text-left text-xs font-bold leading-relaxed text-red-800">
+                <p>{error}</p>
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="mt-3 rounded-xl bg-[#FFD700] px-4 py-2 text-emerald-950"
                 >
-                  パスワード（確認）
-                </label>
-                <input
-                  id="login-password-confirmation"
-                  type="password"
-                  required
-                  minLength={8}
-                  maxLength={128}
-                  autoComplete="new-password"
-                  value={passwordConfirmation}
-                  onChange={event =>
-                    setPasswordConfirmation(event.target.value)
-                  }
-                  placeholder="もう一度入力"
-                  className="w-full rounded-2xl border-0 px-4 py-3.5 text-sm text-stone-900 outline-none ring-2 ring-transparent focus:ring-[#FFD700]"
-                />
-              </>
+                  もう一度試す
+                </button>
+              </div>
             )}
-            <button
-              disabled={isPending}
-              className="w-full rounded-2xl bg-[#FFD700] px-5 py-3.5 text-sm font-black text-emerald-950 shadow-md transition-transform active:scale-[0.97] disabled:cursor-wait disabled:opacity-60"
-            >
-              <LogIn className="mr-1.5 inline h-4 w-4" />
-              {isPending
-                ? "確認中…"
-                : isRegisteringMode
-                  ? "パスワードを設定して始める"
-                  : "ログイン"}
-            </button>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => {
-                setMode(current =>
-                  current === "login" ? "register" : "login"
-                );
-                setPasswordConfirmation("");
-              }}
-              className="w-full pt-1 text-center text-xs font-bold text-green-100 underline disabled:opacity-50"
-            >
-              {isRegisteringMode
-                ? "すでに登録済みの方はこちら"
-                : "初めての方・パスワードを設定する方はこちら"}
-            </button>
-          </form>
+            <p className="text-xs leading-relaxed text-green-100">
+              この端末だけのゲスト用アルバムが作成されます。
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { eq, and, sql, asc, inArray, desc, or } from "drizzle-orm";
 import { invokeLLM } from "./_core/llm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { nanoid } from "nanoid";
+import { createHash } from "node:crypto";
 import {
   albumMountains,
   albums,
@@ -109,6 +110,37 @@ export async function getUserByEmail(email: string) {
   return result[0];
 }
 
+export function guestOpenId(guestKey: string): string {
+  return `guest:${createHash("sha256").update(guestKey).digest("hex").slice(0, 58)}`;
+}
+
+/** Creates or restores an isolated anonymous account for one browser. */
+export async function getOrCreateGuestUser(guestKey: string): Promise<User> {
+  const openId = guestOpenId(guestKey);
+  const existing = await getUserByOpenId(openId);
+  if (existing) {
+    await upsertUser({
+      openId,
+      loginMethod: "guest",
+      lastSignedIn: new Date(),
+    });
+    return existing;
+  }
+
+  await upsertUser({
+    openId,
+    name: "ゲスト登山者",
+    loginMethod: "guest",
+    lastSignedIn: new Date(),
+  });
+  const created = await getUserByOpenId(openId);
+  if (!created)
+    throw new Error(
+      "ゲスト利用を開始できませんでした。もう一度お試しください。"
+    );
+  return created;
+}
+
 /**
  * Creates a password-authenticated account or migrates the existing account
  * that owns the email address. The primary user id stays the same so records,
@@ -150,49 +182,6 @@ export async function upsertPasswordUser(user: InsertUser): Promise<User> {
   await upsertUser(user);
   const created = await getUserByOpenId(user.openId);
   if (!created) throw new Error("アカウントを作成できませんでした。");
-  return created;
-}
-
-/**
- * Creates a password-authenticated identity or converts a legacy identity
- * with the same email. Updating the existing row preserves profiles, records,
- * friendships, and all other userId-based data.
- */
-export async function upsertEmailUser(user: InsertUser): Promise<User> {
-  if (!user.openId?.startsWith("email:") || !user.email) {
-    throw new Error("メール認証ユーザーの情報が不正です。");
-  }
-
-  const db = await databaseOrThrow();
-  const existingEmailUser = await getUserByOpenId(user.openId);
-  if (existingEmailUser) {
-    await upsertUser({
-      ...user,
-      friendCode: existingEmailUser.friendCode ?? undefined,
-    });
-    const refreshed = await getUserByOpenId(user.openId);
-    if (refreshed) return refreshed;
-  }
-
-  const legacyUser = await getUserByEmail(user.email);
-  if (legacyUser) {
-    await db
-      .update(users)
-      .set({
-        openId: user.openId,
-        name: user.name ?? legacyUser.name,
-        email: user.email,
-        loginMethod: "email",
-        lastSignedIn: user.lastSignedIn ?? new Date(),
-      })
-      .where(eq(users.id, legacyUser.id));
-    const migrated = await getUserByOpenId(user.openId);
-    if (migrated) return migrated;
-  }
-
-  await upsertUser(user);
-  const created = await getUserByOpenId(user.openId);
-  if (!created) throw new Error("メール認証アカウントを作成できませんでした。");
   return created;
 }
 
