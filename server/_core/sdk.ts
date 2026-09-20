@@ -1,4 +1,9 @@
-import { AXIOS_TIMEOUT_MS, COOKIE_NAME, ONE_YEAR_MS, decodeOAuthState } from "@shared/const";
+import {
+  AXIOS_TIMEOUT_MS,
+  COOKIE_NAME,
+  ONE_YEAR_MS,
+  decodeOAuthState,
+} from "@shared/const";
 import { ForbiddenError } from "@shared/_core/errors";
 import axios, { type AxiosInstance } from "axios";
 import { parse as parseCookieHeader } from "cookie";
@@ -286,22 +291,18 @@ class SDKServer {
     }
 
     if (!session.openId.startsWith("email:")) {
-      throw ForbiddenError("Email login is required");
+      throw ForbiddenError("Password login is required");
     }
 
     const sessionUserId = session.openId;
     const signedInAt = new Date();
     let user = await db.getUserByOpenId(sessionUserId);
 
-    // Email users are provisioned by the magic-link verification flow. Never
-    // fall back to the Manus OAuth API here: that would re-enable a disabled
-    // login path for old or forged session tokens.
-    if (!user) {
-      throw ForbiddenError("Email user not found");
-    }
-
-    if (!user) {
-      throw ForbiddenError("User not found");
+    // Users are provisioned by email/password registration. Never fall back
+    // to Manus OAuth here because only password-authenticated sessions are
+    // allowed by the application.
+    if (!user || user.loginMethod !== "password" || !user.passwordHash) {
+      throw ForbiddenError("Password user not found");
     }
 
     await db.upsertUser({

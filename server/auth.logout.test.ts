@@ -10,15 +10,19 @@ type CookieCall = {
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
-function createAuthContext(): { ctx: TrpcContext; clearedCookies: CookieCall[] } {
+function createAuthContext(): {
+  ctx: TrpcContext;
+  clearedCookies: CookieCall[];
+} {
   const clearedCookies: CookieCall[] = [];
 
   const user: AuthenticatedUser = {
     id: 1,
-    openId: "sample-user",
+    openId: "email:sample-user",
     email: "sample@example.com",
+    passwordHash: "scrypt$v1$16384$8$1$salt$key",
     name: "Sample User",
-    loginMethod: "manus",
+    loginMethod: "password",
     role: "user",
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -42,13 +46,13 @@ function createAuthContext(): { ctx: TrpcContext; clearedCookies: CookieCall[] }
 }
 
 describe("auth.logout", () => {
-  it("exposes the OAuth-authenticated user through the session context", async () => {
+  it("exposes the password-authenticated user through the session context", async () => {
     const { ctx } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
     await expect(caller.auth.me()).resolves.toMatchObject({
       id: 1,
-      openId: "sample-user",
+      openId: "email:sample-user",
       email: "sample@example.com",
     });
   });
