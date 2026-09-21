@@ -1,6 +1,15 @@
 const MAX_COMPANION_REPLY_CHARS = 240;
 
 /**
+ * Gemini Flash keeps Yamako's safety notes responsive on mobile networks.
+ * The model is invoked only by the server-side Manus LLM proxy, so no API
+ * credential is exposed in the client.
+ */
+export const COMPANION_GEMINI_MODEL = "gemini-3-flash-preview";
+export const COMPANION_AI_LABEL = "Gemini";
+export const COMPANION_GEMINI_THINKING = { budget_tokens: 1024 } as const;
+
+/**
  * Keep companion replies readable on a phone screen in the mountains.
  * The LLM is instructed to be concise, but this guard also protects the UI
  * when a model returns unexpectedly long text.
@@ -18,7 +27,7 @@ export function compactCompanionReply(text: string): string {
     shortened.lastIndexOf("。"),
     shortened.lastIndexOf("！"),
     shortened.lastIndexOf("？"),
-    shortened.lastIndexOf("\n"),
+    shortened.lastIndexOf("\n")
   );
   const safeEnd = boundary >= 120 ? boundary + 1 : shortened.length;
   return `${shortened.slice(0, safeEnd).trim()}…`;
@@ -29,4 +38,5 @@ export const companionReplyGuidance = [
   "2〜4文、または最大3個の短い箇条書きにする。",
   "目安は120文字、絶対に240文字以内。前置きや長い説明は省く。",
   "安全に関わる内容は、最優先の注意を最初に1点だけ伝える。",
+  "思考過程、推敲メモ、英語の作業文は出力せず、最終回答だけを返す。",
 ].join("\n");

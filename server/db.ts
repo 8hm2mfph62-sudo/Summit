@@ -23,7 +23,12 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { calculateClimbXp, calculateLevel } from "./progress";
-import { compactCompanionReply, companionReplyGuidance } from "./companion";
+import {
+  COMPANION_GEMINI_THINKING,
+  COMPANION_GEMINI_MODEL,
+  compactCompanionReply,
+  companionReplyGuidance,
+} from "./companion";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -804,7 +809,8 @@ export async function sendCompanionMessage(user: User, text: string) {
 
     const result = await invokeLLM({
       messages: messagesForLLM,
-      maxTokens: 320,
+      model: COMPANION_GEMINI_MODEL,
+      thinking: COMPANION_GEMINI_THINKING,
     });
 
     const choice = result.choices[0];
