@@ -117,6 +117,11 @@ export async function registerWithPassword(
       "このメールアドレスにはすでにパスワードが設定されています。ログインしてください。"
     );
   }
+  if (existing) {
+    throw new Error(
+      "このメールアドレスは別のログイン方法で使われています。アカウント設定からパスワードを追加してください。"
+    );
+  }
 
   const passwordHash = await hashPassword(password);
   const now = new Date();
@@ -124,7 +129,7 @@ export async function registerWithPassword(
     openId: emailOpenId(email),
     email,
     passwordHash,
-    name: existing?.name ?? email.split("@")[0]?.slice(0, 80) ?? "登山者",
+    name: email.split("@")[0]?.slice(0, 80) ?? "登山者",
     loginMethod: "password",
     lastSignedIn: now,
   });

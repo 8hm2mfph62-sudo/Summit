@@ -291,24 +291,22 @@ class SDKServer {
     }
 
     const isPasswordSession = session.openId.startsWith("email:");
-    const isGuestSession = session.openId.startsWith("guest:");
-    if (!isPasswordSession && !isGuestSession) {
-      throw ForbiddenError("Guest or password login is required");
+    if (!isPasswordSession) {
+      throw ForbiddenError("Password login is required");
     }
 
     const sessionUserId = session.openId;
     const signedInAt = new Date();
     let user = await db.getUserByOpenId(sessionUserId);
 
-    // Users are provisioned only by the application's guest or password
-    // flows. Never fall back to Manus OAuth for old or forged tokens.
+    // Users are provisioned only by the application's password flow. Never
+    // fall back to legacy guest or Manus OAuth identities.
     const isValidPasswordUser =
       isPasswordSession &&
       user?.loginMethod === "password" &&
       Boolean(user.passwordHash);
-    const isValidGuestUser = isGuestSession && user?.loginMethod === "guest";
-    if (!user || (!isValidPasswordUser && !isValidGuestUser)) {
-      throw ForbiddenError("Guest or password user not found");
+    if (!user || !isValidPasswordUser) {
+      throw ForbiddenError("Password user not found");
     }
 
     await db.upsertUser({

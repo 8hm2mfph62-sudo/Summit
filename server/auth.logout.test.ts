@@ -46,15 +46,17 @@ function createAuthContext(): {
 }
 
 describe("auth.logout", () => {
-  it("exposes the password-authenticated user through the session context", async () => {
+  it("exposes a safe account DTO without the password hash or internal openId", async () => {
     const { ctx } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
     await expect(caller.auth.me()).resolves.toMatchObject({
       id: 1,
-      openId: "email:sample-user",
+      name: "Sample User",
       email: "sample@example.com",
     });
+    await expect(caller.auth.me()).resolves.not.toHaveProperty("passwordHash");
+    await expect(caller.auth.me()).resolves.not.toHaveProperty("openId");
   });
 
   it("clears the session cookie and reports success", async () => {

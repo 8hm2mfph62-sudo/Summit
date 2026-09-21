@@ -2,7 +2,6 @@ import { eq, and, sql, asc, inArray, desc, or } from "drizzle-orm";
 import { invokeLLM } from "./_core/llm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { nanoid } from "nanoid";
-import { createHash } from "node:crypto";
 import {
   albumMountains,
   albums,
@@ -115,41 +114,9 @@ export async function getUserByEmail(email: string) {
   return result[0];
 }
 
-export function guestOpenId(guestKey: string): string {
-  return `guest:${createHash("sha256").update(guestKey).digest("hex").slice(0, 58)}`;
-}
-
-/** Creates or restores an isolated anonymous account for one browser. */
-export async function getOrCreateGuestUser(guestKey: string): Promise<User> {
-  const openId = guestOpenId(guestKey);
-  const existing = await getUserByOpenId(openId);
-  if (existing) {
-    await upsertUser({
-      openId,
-      loginMethod: "guest",
-      lastSignedIn: new Date(),
-    });
-    return existing;
-  }
-
-  await upsertUser({
-    openId,
-    name: "ゲスト登山者",
-    loginMethod: "guest",
-    lastSignedIn: new Date(),
-  });
-  const created = await getUserByOpenId(openId);
-  if (!created)
-    throw new Error(
-      "ゲスト利用を開始できませんでした。もう一度お試しください。"
-    );
-  return created;
-}
-
 /**
- * Creates a password-authenticated account or migrates the existing account
- * that owns the email address. The primary user id stays the same so records,
- * profile data, and friendships remain attached to the user.
+ * Creates or refreshes a password-authenticated account. An existing account
+ * with the same email but a different identity is never overwritten.
  */
 export async function upsertPasswordUser(user: InsertUser): Promise<User> {
   if (!user.openId?.startsWith("email:") || !user.email || !user.passwordHash) {
@@ -169,19 +136,9 @@ export async function upsertPasswordUser(user: InsertUser): Promise<User> {
 
   const legacyUser = await getUserByEmail(user.email);
   if (legacyUser) {
-    await db
-      .update(users)
-      .set({
-        openId: user.openId,
-        name: user.name ?? legacyUser.name,
-        email: user.email,
-        passwordHash: user.passwordHash,
-        loginMethod: "password",
-        lastSignedIn: user.lastSignedIn ?? new Date(),
-      })
-      .where(eq(users.id, legacyUser.id));
-    const migrated = await getUserByOpenId(user.openId);
-    if (migrated) return migrated;
+    throw new Error(
+      "このメールアドレスは別のログイン方法で使われています。アカウント設定からパスワードを追加してください。"
+    );
   }
 
   await upsertUser(user);

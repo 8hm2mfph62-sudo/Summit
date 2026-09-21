@@ -5,6 +5,7 @@ const dbMock = vi.hoisted(() => ({
   completeChallenge: vi.fn(),
   createClimbRecord: vi.fn(),
   createInquiry: vi.fn(),
+  databaseOrThrow: vi.fn(),
   deleteClimbRecord: vi.fn(),
   getCatalogue: vi.fn(),
   getDashboard: vi.fn(),
@@ -16,8 +17,24 @@ const dbMock = vi.hoisted(() => ({
   updateProfile: vi.fn(),
 }));
 
+const plansMock = vi.hoisted(() => ({
+  createAiPlan: vi.fn(),
+  createFriendPlan: vi.fn(),
+  getPlan: vi.fn(),
+  listPlans: vi.fn(),
+  respondToPlanInvite: vi.fn(),
+  sendAiPlanTurn: vi.fn(),
+  sendPlanMessage: vi.fn(),
+  suggestPlanFromGroup: vi.fn(),
+  updatePlan: vi.fn(),
+}));
+
 vi.mock("./db", () => dbMock);
 vi.mock("./storage", () => ({ storagePut: vi.fn() }));
+vi.mock("./plans", async importOriginal => {
+  const actual = await importOriginal<typeof import("./plans")>();
+  return { ...actual, ...plansMock };
+});
 
 import { appRouter } from "./routers";
 
@@ -55,7 +72,12 @@ describe("mountain tRPC CRUD", () => {
   });
 
   it("creates a validated record for the current authenticated user", async () => {
-    dbMock.createClimbRecord.mockResolvedValue({ record: { id: "record-1" }, xpEarned: 130, levelUp: false, level: 1 });
+    dbMock.createClimbRecord.mockResolvedValue({
+      record: { id: "record-1" },
+      xpEarned: 130,
+      levelUp: false,
+      level: 1,
+    });
     const caller = appRouter.createCaller(createContext());
 
     const result = await caller.mountain.records.create({
@@ -67,18 +89,26 @@ describe("mountain tRPC CRUD", () => {
     });
 
     expect(result).toMatchObject({ xpEarned: 130 });
-    expect(dbMock.createClimbRecord).toHaveBeenCalledWith(user, expect.objectContaining({ mountainId: "hiei", photos: ["/manus-storage/mountain/test.jpg"] }));
+    expect(dbMock.createClimbRecord).toHaveBeenCalledWith(
+      user,
+      expect.objectContaining({
+        mountainId: "hiei",
+        photos: ["/manus-storage/mountain/test.jpg"],
+      })
+    );
   });
 
   it("rejects an unpersisted image URL before calling the data layer", async () => {
     const caller = appRouter.createCaller(createContext());
 
-    await expect(caller.mountain.records.create({
-      mountainId: "hiei",
-      climbDate: "2026-08-07",
-      memo: "test",
-      photos: ["data:image/png;base64,not-permitted"],
-    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      caller.mountain.records.create({
+        mountainId: "hiei",
+        climbDate: "2026-08-07",
+        memo: "test",
+        photos: ["data:image/png;base64,not-permitted"],
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(dbMock.createClimbRecord).not.toHaveBeenCalled();
   });
 
@@ -95,14 +125,19 @@ describe("mountain tRPC CRUD", () => {
     });
     await caller.mountain.records.delete({ id: "record-1" });
 
-    expect(dbMock.updateClimbRecord).toHaveBeenCalledWith(user, expect.objectContaining({ id: "record-1" }));
+    expect(dbMock.updateClimbRecord).toHaveBeenCalledWith(
+      user,
+      expect.objectContaining({ id: "record-1" })
+    );
     expect(dbMock.deleteClimbRecord).toHaveBeenCalledWith(user, "record-1");
   });
 
   it("rejects unauthenticated mutation attempts before they reach the data layer", async () => {
     const caller = appRouter.createCaller(createAnonymousContext());
 
-    await expect(caller.mountain.records.delete({ id: "record-1" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(
+      caller.mountain.records.delete({ id: "record-1" })
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     expect(dbMock.deleteClimbRecord).not.toHaveBeenCalled();
   });
 
@@ -116,13 +151,23 @@ describe("mountain tRPC CRUD", () => {
 
     await caller.mountain.records.delete({ id: "record-owned-by-session" });
 
-    expect(dbMock.deleteClimbRecord).toHaveBeenCalledWith(otherUser, "record-owned-by-session");
-    expect(dbMock.deleteClimbRecord).not.toHaveBeenCalledWith(user, "record-owned-by-session");
+    expect(dbMock.deleteClimbRecord).toHaveBeenCalledWith(
+      otherUser,
+      "record-owned-by-session"
+    );
+    expect(dbMock.deleteClimbRecord).not.toHaveBeenCalledWith(
+      user,
+      "record-owned-by-session"
+    );
   });
 
   it("updates the profile and retrieves the real catalogue through the tRPC contract", async () => {
     dbMock.updateProfile.mockResolvedValue({ profile: { nickname: "登山者" } });
-    dbMock.getCatalogue.mockResolvedValue({ mountains: [], albums: [], badges: [] });
+    dbMock.getCatalogue.mockResolvedValue({
+      mountains: [],
+      albums: [],
+      badges: [],
+    });
     const caller = appRouter.createCaller(createContext());
 
     await caller.mountain.profile.update({
@@ -135,32 +180,83 @@ describe("mountain tRPC CRUD", () => {
       homePrefecture: "京都",
       preferredCondition: "景色重視",
     });
-    await expect(caller.catalogue.get()).resolves.toEqual({ mountains: [], albums: [], badges: [] });
-    expect(dbMock.updateProfile).toHaveBeenCalledWith(user, expect.objectContaining({ nickname: "登山者" }));
+    await expect(caller.catalogue.get()).resolves.toEqual({
+      mountains: [],
+      albums: [],
+      badges: [],
+    });
+    expect(dbMock.updateProfile).toHaveBeenCalledWith(
+      user,
+      expect.objectContaining({ nickname: "登山者" })
+    );
   });
 
   it("persists companion messages under the authenticated user through tRPC", async () => {
     dbMock.sendCompanionMessage.mockResolvedValue({
-      userMessage: { id: "message-1", role: "user", text: "装備を確認したい", createdAt: new Date().toISOString() },
-      reply: { id: "message-2", role: "model", text: "雨具と水分を確認しましょう。", createdAt: new Date().toISOString() },
+      userMessage: {
+        id: "message-1",
+        role: "user",
+        text: "装備を確認したい",
+        createdAt: new Date().toISOString(),
+      },
+      reply: {
+        id: "message-2",
+        role: "model",
+        text: "雨具と水分を確認しましょう。",
+        createdAt: new Date().toISOString(),
+      },
     });
     const caller = appRouter.createCaller(createContext());
 
-    await expect(caller.mountain.companion.send({ text: "装備を確認したい" })).resolves.toMatchObject({
+    await expect(
+      caller.mountain.companion.send({ text: "装備を確認したい" })
+    ).resolves.toMatchObject({
       reply: { id: "message-2" },
     });
-    expect(dbMock.sendCompanionMessage).toHaveBeenCalledWith(user, "装備を確認したい");
+    expect(dbMock.sendCompanionMessage).toHaveBeenCalledWith(
+      user,
+      "装備を確認したい"
+    );
   });
 
   it("reloads the persisted companion history for the authenticated user", async () => {
     const history = [
-      { id: "message-1", role: "user", text: "装備を確認したい", createdAt: new Date().toISOString() },
-      { id: "message-2", role: "model", text: "雨具と水分を確認しましょう。", createdAt: new Date().toISOString() },
+      {
+        id: "message-1",
+        role: "user",
+        text: "装備を確認したい",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "message-2",
+        role: "model",
+        text: "雨具と水分を確認しましょう。",
+        createdAt: new Date().toISOString(),
+      },
     ];
     dbMock.listCompanionMessages.mockResolvedValue(history);
     const caller = appRouter.createCaller(createContext());
 
     await expect(caller.mountain.companion.list()).resolves.toEqual(history);
     expect(dbMock.listCompanionMessages).toHaveBeenCalledWith(user);
+  });
+
+  it("creates an AI plan only for the authenticated session user", async () => {
+    plansMock.createAiPlan.mockResolvedValue({ plan: { id: "plan-ai-1" } });
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.mountain.plans.createAi()).resolves.toMatchObject({
+      plan: { id: "plan-ai-1" },
+    });
+    expect(plansMock.createAiPlan).toHaveBeenCalledWith(user);
+  });
+
+  it("rejects unauthenticated plan mutations before the plan service", async () => {
+    const caller = appRouter.createCaller(createAnonymousContext());
+
+    await expect(caller.mountain.plans.createAi()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    expect(plansMock.createAiPlan).not.toHaveBeenCalled();
   });
 });

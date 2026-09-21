@@ -32,14 +32,18 @@ export const users = mysqlTable("users", {
  * Historical OTP delivery records retained for data-retention continuity.
  * Password authentication never reads or writes this table.
  */
-export const emailLoginTokens = mysqlTable("emailLoginTokens", {
-  id: int("id").autoincrement().primaryKey(),
-  email: varchar("email", { length: 320 }).notNull(),
-  tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
-  expiresAt: timestamp("expiresAt").notNull(),
-  usedAt: timestamp("usedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [index("email_login_tokens_email_idx").on(table.email)]);
+export const emailLoginTokens = mysqlTable(
+  "emailLoginTokens",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    email: varchar("email", { length: 320 }).notNull(),
+    tokenHash: varchar("tokenHash", { length: 128 }).notNull().unique(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    usedAt: timestamp("usedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("email_login_tokens_email_idx").on(table.email)]
+);
 
 /** Mountain catalogue. The former client-side catalogue is migrated here. */
 export const mountains = mysqlTable(
@@ -287,6 +291,98 @@ export const companionMessages = mysqlTable(
   ]
 );
 
+/** A persistent hiking plan, created either with friends or Yamako. */
+export const hikingPlans = mysqlTable(
+  "hikingPlans",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    ownerId: int("ownerId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    mode: mysqlEnum("mode", ["friends", "ai"]).notNull(),
+    status: mysqlEnum("status", ["draft", "ready", "planned", "archived"])
+      .default("draft")
+      .notNull(),
+    title: varchar("title", { length: 120 }).notNull(),
+    mountainId: varchar("mountainId", { length: 128 }).references(
+      () => mountains.id,
+      { onDelete: "set null" }
+    ),
+    mountainName: varchar("mountainName", { length: 255 }),
+    planDate: date("planDate"),
+    meetingTime: varchar("meetingTime", { length: 16 }),
+    meetingPlace: varchar("meetingPlace", { length: 255 }),
+    routeSummary: text("routeSummary"),
+    transport: varchar("transport", { length: 255 }),
+    notes: text("notes"),
+    equipmentChecklist: json("equipmentChecklist").$type<string[]>().notNull(),
+    safetyNote: text("safetyNote"),
+    version: int("version").default(1).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("hiking_plans_owner_updated_idx").on(table.ownerId, table.updatedAt),
+    index("hiking_plans_owner_status_idx").on(table.ownerId, table.status),
+    index("hiking_plans_mountain_idx").on(table.mountainId),
+  ]
+);
+
+/** Membership controls plan visibility and group chat access. */
+export const planParticipants = mysqlTable(
+  "planParticipants",
+  {
+    planId: varchar("planId", { length: 64 })
+      .notNull()
+      .references(() => hikingPlans.id, { onDelete: "cascade" }),
+    userId: int("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: mysqlEnum("role", ["owner", "member"]).notNull(),
+    membershipStatus: mysqlEnum("membershipStatus", [
+      "invited",
+      "active",
+      "declined",
+      "removed",
+    ])
+      .default("invited")
+      .notNull(),
+    invitedAt: timestamp("invitedAt").defaultNow().notNull(),
+    joinedAt: timestamp("joinedAt"),
+  },
+  table => [
+    primaryKey({ columns: [table.planId, table.userId] }),
+    index("plan_participants_user_status_idx").on(
+      table.userId,
+      table.membershipStatus
+    ),
+    index("plan_participants_plan_status_idx").on(
+      table.planId,
+      table.membershipStatus
+    ),
+  ]
+);
+
+/** One thread per plan: friends chat together, or the owner chats with Yamako. */
+export const planMessages = mysqlTable(
+  "planMessages",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    planId: varchar("planId", { length: 64 })
+      .notNull()
+      .references(() => hikingPlans.id, { onDelete: "cascade" }),
+    senderUserId: int("senderUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    kind: mysqlEnum("kind", ["user", "ai", "system"]).default("user").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("plan_messages_plan_created_idx").on(table.planId, table.createdAt),
+  ]
+);
+
 export const friendships = mysqlTable(
   "friendships",
   {
@@ -340,6 +436,9 @@ export type Badge = typeof badges.$inferSelect;
 export type ChallengeTemplate = typeof challengeTemplates.$inferSelect;
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type ClimbRecord = typeof climbRecords.$inferSelect;
+export type HikingPlan = typeof hikingPlans.$inferSelect;
+export type PlanParticipant = typeof planParticipants.$inferSelect;
+export type PlanMessage = typeof planMessages.$inferSelect;
 export type Friendship = typeof friendships.$inferSelect;
 export type ClimbRecordParticipant =
   typeof climbRecordParticipants.$inferSelect;

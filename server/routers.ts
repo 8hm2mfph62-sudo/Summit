@@ -17,7 +17,6 @@ import {
   sendCompanionMessage,
   updateClimbRecord,
   updateProfile,
-  getOrCreateGuestUser,
 } from "./db";
 import { companionAnimals } from "./progress";
 import {
@@ -31,7 +30,18 @@ import {
 import { storagePut } from "./storage";
 import { loginWithPassword, registerWithPassword } from "./password-auth";
 import { issuePasswordSession } from "./password-session";
-import { issueGuestSession } from "./guest-session";
+import {
+  createAiPlan,
+  createFriendPlan,
+  getPlan,
+  listPlans,
+  planPatchSchema,
+  respondToPlanInvite,
+  sendAiPlanTurn,
+  sendPlanMessage,
+  suggestPlanFromGroup,
+  updatePlan,
+} from "./plans";
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 const photoUrlSchema = z
@@ -82,18 +92,15 @@ function toPasswordAuthError(error: unknown): never {
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
-    guest: publicProcedure
-      .input(z.object({ guestKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }))
-      .mutation(async ({ ctx, input }) => {
-        try {
-          const user = await getOrCreateGuestUser(input.guestKey);
-          await issueGuestSession(user, ctx.req, ctx.res);
-          return { success: true } as const;
-        } catch (error) {
-          return toTrpcError(error);
-        }
-      }),
+    me: publicProcedure.query(opts => {
+      if (!opts.ctx.user) return null;
+      return {
+        id: opts.ctx.user.id,
+        name: opts.ctx.user.name || "登山者",
+        email: opts.ctx.user.email,
+        loginMethod: opts.ctx.user.loginMethod,
+      };
+    }),
     register: publicProcedure
       .input(
         z.object({
@@ -283,6 +290,123 @@ export const appRouter = router({
         .mutation(async ({ ctx, input }) => {
           try {
             return await completeChallenge(ctx.user, input.templateId);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+    }),
+    plans: router({
+      list: protectedProcedure.query(async ({ ctx }) => {
+        try {
+          return await listPlans(ctx.user);
+        } catch (error) {
+          return toTrpcError(error);
+        }
+      }),
+      get: protectedProcedure
+        .input(z.object({ planId: z.string().min(1).max(64) }))
+        .query(async ({ ctx, input }) => {
+          try {
+            return await getPlan(ctx.user, input.planId);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      createFriends: protectedProcedure
+        .input(
+          z.object({
+            title: z.string().trim().min(1).max(120),
+            friendIds: z.array(z.number().int().positive()).max(20),
+          })
+        )
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await createFriendPlan(ctx.user, input);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      createAi: protectedProcedure.mutation(async ({ ctx }) => {
+        try {
+          return await createAiPlan(ctx.user);
+        } catch (error) {
+          return toTrpcError(error);
+        }
+      }),
+      respondInvite: protectedProcedure
+        .input(
+          z.object({ planId: z.string().min(1).max(64), accept: z.boolean() })
+        )
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await respondToPlanInvite(
+              ctx.user,
+              input.planId,
+              input.accept
+            );
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      sendMessage: protectedProcedure
+        .input(
+          z.object({
+            planId: z.string().min(1).max(64),
+            body: z.string().trim().min(1).max(2000),
+          })
+        )
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await sendPlanMessage(ctx.user, input.planId, input.body);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      suggestFromGroup: protectedProcedure
+        .input(z.object({ planId: z.string().min(1).max(64) }))
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await suggestPlanFromGroup(ctx.user, input.planId);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      update: protectedProcedure
+        .input(
+          z.object({
+            planId: z.string().min(1).max(64),
+            expectedVersion: z.number().int().positive(),
+            patch: planPatchSchema,
+          })
+        )
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await updatePlan(
+              ctx.user,
+              input.planId,
+              input.expectedVersion,
+              input.patch
+            );
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      aiTurn: protectedProcedure
+        .input(
+          z.object({
+            planId: z.string().min(1).max(64),
+            expectedVersion: z.number().int().positive(),
+            text: z.string().trim().min(1).max(1200),
+          })
+        )
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await sendAiPlanTurn(
+              ctx.user,
+              input.planId,
+              input.expectedVersion,
+              input.text
+            );
           } catch (error) {
             return toTrpcError(error);
           }

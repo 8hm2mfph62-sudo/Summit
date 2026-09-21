@@ -1,12 +1,12 @@
+import { useMemo, useState, type ReactNode } from "react";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { Mountain, Home, Search, User, Loader2 } from "lucide-react";
+  Mountain,
+  Home,
+  Search,
+  User,
+  Loader2,
+  ClipboardList,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,32 +21,12 @@ import PostRecordView from "./components/PostRecordView";
 import StampAnimation from "./components/StampAnimation";
 import LevelUpCelebration from "./components/LevelUpCelebration";
 import CompanionChat, { ANIMAL_METAS } from "./components/CompanionChat";
+import PlansView from "./components/PlansView";
+import AuthEntryScreen from "./components/AuthEntryScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
-type Tab = "home" | "search" | "album" | "mypage";
-const GUEST_KEY_STORAGE_KEY = "mountain-guest-key";
-
-function createGuestKey(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(""))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-function getGuestKey(): string {
-  try {
-    const existing = localStorage.getItem(GUEST_KEY_STORAGE_KEY);
-    if (existing && /^[A-Za-z0-9_-]{43}$/.test(existing)) return existing;
-    const created = createGuestKey();
-    localStorage.setItem(GUEST_KEY_STORAGE_KEY, created);
-    return created;
-  } catch {
-    return createGuestKey();
-  }
-}
+type Tab = "home" | "search" | "plans" | "album" | "mypage";
 
 function MountainApp() {
   const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
@@ -60,9 +40,6 @@ function MountainApp() {
   const uploadPhoto = trpc.mountain.photos.upload.useMutation();
   const resetProgress = trpc.mountain.progress.reset.useMutation();
   const completeChallenge = trpc.mountain.challenges.complete.useMutation();
-  const guest = trpc.auth.guest.useMutation();
-  const attemptedGuestAccess = useRef(false);
-  const [guestError, setGuestError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [selectedMountainId, setSelectedMountainId] = useState<string | null>(
     null
@@ -92,40 +69,13 @@ function MountainApp() {
       utils.catalogue.get.invalidate(),
     ]);
   };
-  const enterAsGuest = useCallback(async () => {
-    setGuestError(null);
-    try {
-      await guest.mutateAsync({ guestKey: getGuestKey() });
-      await utils.auth.me.invalidate();
-    } catch (error) {
-      setGuestError(
-        error instanceof Error
-          ? error.message
-          : "ゲスト利用を開始できませんでした。もう一度お試しください。"
-      );
-    }
-  }, [guest, utils.auth.me]);
-
-  useEffect(() => {
-    if (authLoading || isAuthenticated || attemptedGuestAccess.current) return;
-    attemptedGuestAccess.current = true;
-    void enterAsGuest();
-  }, [authLoading, enterAsGuest, isAuthenticated]);
-
   if (authLoading || catalogueQuery.isLoading || !catalogue)
     return <LoadingScreen />;
   if (catalogueQuery.error)
     return <FailureScreen message={catalogueQuery.error.message} />;
   if (!isAuthenticated || !user)
     return (
-      <GuestEntryScreen
-        isStarting={guest.isPending}
-        error={guestError}
-        onRetry={() => {
-          attemptedGuestAccess.current = true;
-          void enterAsGuest();
-        }}
-      />
+      <AuthEntryScreen onAuthenticated={() => utils.auth.me.invalidate()} />
     );
   if (dashboardQuery.isLoading || !dashboard) return <LoadingScreen />;
   if (dashboardQuery.error)
@@ -219,6 +169,13 @@ function MountainApp() {
           userProfile={dashboard.profile}
         />
       );
+    if (activeTab === "plans")
+      return (
+        <PlansView
+          mountains={catalogue.mountains}
+          onBack={() => setActiveTab("home")}
+        />
+      );
     if (activeTab === "album")
       return (
         <AlbumView
@@ -294,6 +251,12 @@ function MountainApp() {
               label="山を探す"
               active={activeTab === "search"}
               onClick={() => setActiveTab("search")}
+            />
+            <TabButton
+              icon={<ClipboardList className="w-5 h-5" />}
+              label="計画書"
+              active={activeTab === "plans"}
+              onClick={() => setActiveTab("plans")}
             />
             <button
               onClick={() => setShowCompanionChat(true)}
@@ -400,61 +363,6 @@ function FailureScreen({ message }: { message: string }) {
         データを読み込めませんでした。
       </p>
       <p className="mt-2 text-xs text-stone-500">{message}</p>
-    </div>
-  );
-}
-function GuestEntryScreen({
-  isStarting,
-  error,
-  onRetry,
-}: {
-  isStarting: boolean;
-  error: string | null;
-  onRetry: () => void;
-}) {
-  return (
-    <div className="min-h-screen bg-stone-100 flex justify-center">
-      <div className="w-full max-w-md bg-[#FDFBF4] flex flex-col justify-center p-7 text-center">
-        <div className="forest-gradient rounded-[32px] px-6 py-10 text-white shadow-xl">
-          <p className="text-5xl">🏔️</p>
-          <p className="mt-4 text-[10px] font-black tracking-[0.24em] text-green-200">
-            YOUR CLIMBING JOURNAL
-          </p>
-          <h1 className="mt-2 text-3xl font-black font-display-heavy">
-            Peak Album
-          </h1>
-          <p className="mt-4 text-sm leading-relaxed text-green-100">
-            登った山、写真、思い出をあなた専用のアルバムに記録します。ログインなしですぐに始められます。
-          </p>
-          <div className="mt-8 space-y-4">
-            <div className="flex items-center justify-center gap-3 rounded-2xl bg-white/10 px-4 py-4 text-left">
-              <Loader2
-                className={`h-5 w-5 shrink-0 ${isStarting ? "animate-spin" : ""}`}
-              />
-              <p className="text-sm font-bold">
-                {isStarting
-                  ? "あなたの登山アルバムを準備中…"
-                  : "ゲストとして入場します"}
-              </p>
-            </div>
-            {error && (
-              <div className="rounded-2xl bg-red-50 p-4 text-left text-xs font-bold leading-relaxed text-red-800">
-                <p>{error}</p>
-                <button
-                  type="button"
-                  onClick={onRetry}
-                  className="mt-3 rounded-xl bg-[#FFD700] px-4 py-2 text-emerald-950"
-                >
-                  もう一度試す
-                </button>
-              </div>
-            )}
-            <p className="text-xs leading-relaxed text-green-100">
-              この端末だけのゲスト用アルバムが作成されます。
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
