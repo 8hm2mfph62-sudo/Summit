@@ -22,17 +22,21 @@ import StampAnimation from "./components/StampAnimation";
 import LevelUpCelebration from "./components/LevelUpCelebration";
 import CompanionChat, { ANIMAL_METAS } from "./components/CompanionChat";
 import PlansView from "./components/PlansView";
+import AdminConsole from "./components/AdminConsole";
 import AuthEntryScreen from "./components/AuthEntryScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
-type Tab = "home" | "search" | "plans" | "album" | "mypage";
+type Tab = "home" | "search" | "plans" | "album" | "mypage" | "admin";
 
 function MountainApp() {
   const { user, loading: authLoading, isAuthenticated, logout } = useAuth();
   const utils = trpc.useUtils();
   const catalogueQuery = trpc.catalogue.get.useQuery();
   const dashboardQuery = trpc.mountain.dashboard.useQuery(undefined, {
+    enabled: isAuthenticated,
+  });
+  const announcementsQuery = trpc.announcements.latest.useQuery(undefined, {
     enabled: isAuthenticated,
   });
   const updateProfile = trpc.mountain.profile.update.useMutation();
@@ -141,6 +145,7 @@ function MountainApp() {
           userProfile={dashboard.profile}
           records={dashboard.records}
           challenges={dashboard.challenges}
+          announcements={announcementsQuery.data ?? []}
           onSelectMountain={setSelectedMountainId}
           onNavigateTab={setActiveTab}
           completeChallenge={async templateId => {
@@ -188,6 +193,8 @@ function MountainApp() {
           userProfile={dashboard.profile}
         />
       );
+    if (activeTab === "admin" && user.role === "admin")
+      return <AdminConsole onBack={() => setActiveTab("mypage")} />;
     return (
       <MyPageView
         badges={catalogue.badges}
@@ -201,6 +208,8 @@ function MountainApp() {
           await resetProgress.mutateAsync();
           await refresh();
         }}
+        isAdmin={user.role === "admin"}
+        onOpenAdmin={() => setActiveTab("admin")}
         onLogout={logout}
       />
     );

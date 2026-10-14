@@ -3,7 +3,23 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import {
+  adminProcedure,
+  protectedProcedure,
+  publicProcedure,
+  router,
+} from "./_core/trpc";
+import {
+  createAnnouncement,
+  grantPlayerXp,
+  listAdminAnnouncements,
+  listAdminPlayers,
+  listPublishedAnnouncements,
+  resetPlayerProgressByAdmin,
+  setPlayerBanStatus,
+  setPlayerRole,
+  updateAnnouncement,
+} from "./admin";
 import {
   createClimbRecord,
   createInquiry,
@@ -64,6 +80,12 @@ const recordInput = z.object({
   triviaText: optionalText(5000),
   friendIds: z.array(z.number().int().positive()).max(20).optional(),
 });
+const announcementInput = z.object({
+  title: z.string().trim().min(1, "件名を入力してください。").max(160),
+  body: z.string().trim().min(1, "本文を入力してください。").max(10_000),
+  category: z.enum(["info", "safety", "maintenance", "event"]),
+  isPublished: z.boolean(),
+});
 
 function toTrpcError(error: unknown): never {
   if (error instanceof TRPCError) throw error;
@@ -99,6 +121,7 @@ export const appRouter = router({
         name: opts.ctx.user.name || "登山者",
         email: opts.ctx.user.email,
         loginMethod: opts.ctx.user.loginMethod,
+        role: opts.ctx.user.role,
       };
     }),
     register: publicProcedure
@@ -146,6 +169,110 @@ export const appRouter = router({
       } catch (error) {
         return toTrpcError(error);
       }
+    }),
+  }),
+  announcements: router({
+    latest: protectedProcedure.query(async () => {
+      try {
+        return await listPublishedAnnouncements();
+      } catch (error) {
+        return toTrpcError(error);
+      }
+    }),
+  }),
+  admin: router({
+    players: router({
+      list: adminProcedure
+        .input(z.object({ query: z.string().trim().max(160) }))
+        .query(async ({ input }) => {
+          try {
+            return await listAdminPlayers(input.query);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      setRole: adminProcedure
+        .input(
+          z.object({
+            userId: z.number().int().positive(),
+            role: z.enum(["user", "admin"]),
+          })
+        )
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await setPlayerRole(ctx.user, input.userId, input.role);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      setBanStatus: adminProcedure
+        .input(
+          z.object({
+            userId: z.number().int().positive(),
+            isBanned: z.boolean(),
+          })
+        )
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await setPlayerBanStatus(
+              ctx.user,
+              input.userId,
+              input.isBanned
+            );
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      grantXp: adminProcedure
+        .input(
+          z.object({
+            userId: z.number().int().positive(),
+            amount: z.number().int().min(1).max(10_000),
+          })
+        )
+        .mutation(async ({ input }) => {
+          try {
+            return await grantPlayerXp(input.userId, input.amount);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      resetProgress: adminProcedure
+        .input(z.object({ userId: z.number().int().positive() }))
+        .mutation(async ({ input }) => {
+          try {
+            return await resetPlayerProgressByAdmin(input.userId);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+    }),
+    announcements: router({
+      list: adminProcedure.query(async () => {
+        try {
+          return await listAdminAnnouncements();
+        } catch (error) {
+          return toTrpcError(error);
+        }
+      }),
+      create: adminProcedure
+        .input(announcementInput)
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await createAnnouncement(ctx.user, input);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      update: adminProcedure
+        .input(announcementInput.extend({ id: z.string().min(1).max(64) }))
+        .mutation(async ({ input }) => {
+          try {
+            return await updateAnnouncement(input);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
     }),
   }),
   mountain: router({

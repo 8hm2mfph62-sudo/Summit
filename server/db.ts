@@ -114,6 +114,18 @@ export async function getUserByEmail(email: string) {
   return result[0];
 }
 
+/** Returns whether an account has been suspended by an administrator. */
+export async function isUserBanned(userId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const [profile] = await db
+    .select({ isBanned: userProfiles.isBanned })
+    .from(userProfiles)
+    .where(eq(userProfiles.userId, userId))
+    .limit(1);
+  return profile?.isBanned === true;
+}
+
 /**
  * Creates or refreshes a password-authenticated account. An existing account
  * with the same email but a different identity is never overwritten.

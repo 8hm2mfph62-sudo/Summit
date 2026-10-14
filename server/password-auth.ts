@@ -2,6 +2,7 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import {
   getUserByEmail,
   getUserByOpenId,
+  isUserBanned,
   upsertPasswordUser,
   upsertUser,
 } from "./db";
@@ -141,6 +142,11 @@ export async function loginWithPassword(emailInput: string, password: string) {
   const user = await getUserByEmail(email);
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     throw new Error("メールアドレスまたはパスワードが正しくありません。");
+  }
+  if (await isUserBanned(user.id)) {
+    throw new Error(
+      "このアカウントは現在利用停止中です。管理者へお問い合わせください。"
+    );
   }
 
   const now = new Date();

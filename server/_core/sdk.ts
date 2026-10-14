@@ -308,6 +308,9 @@ class SDKServer {
     if (!user || !isValidPasswordUser) {
       throw ForbiddenError("Password user not found");
     }
+    if (await db.isUserBanned(user.id)) {
+      throw ForbiddenError("Account is suspended");
+    }
 
     await db.upsertUser({
       openId: user.openId,

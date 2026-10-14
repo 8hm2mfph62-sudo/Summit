@@ -428,6 +428,32 @@ export const climbRecordParticipants = mysqlTable(
   ]
 );
 
+/** Notices written by administrators and displayed to every signed-in player. */
+export const announcements = mysqlTable(
+  "announcements",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    title: varchar("title", { length: 160 }).notNull(),
+    body: text("body").notNull(),
+    category: mysqlEnum("category", ["info", "safety", "maintenance", "event"])
+      .default("info")
+      .notNull(),
+    isPublished: boolean("isPublished").default(false).notNull(),
+    publishedAt: timestamp("publishedAt"),
+    authorId: int("authorId")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("announcements_published_updated_idx").on(
+      table.isPublished,
+      table.updatedAt
+    ),
+  ]
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Mountain = typeof mountains.$inferSelect;
@@ -442,3 +468,4 @@ export type PlanMessage = typeof planMessages.$inferSelect;
 export type Friendship = typeof friendships.$inferSelect;
 export type ClimbRecordParticipant =
   typeof climbRecordParticipants.$inferSelect;
+export type Announcement = typeof announcements.$inferSelect;

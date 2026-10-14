@@ -29,7 +29,20 @@ const plansMock = vi.hoisted(() => ({
   updatePlan: vi.fn(),
 }));
 
+const adminMock = vi.hoisted(() => ({
+  createAnnouncement: vi.fn(),
+  grantPlayerXp: vi.fn(),
+  listAdminAnnouncements: vi.fn(),
+  listAdminPlayers: vi.fn(),
+  listPublishedAnnouncements: vi.fn(),
+  resetPlayerProgressByAdmin: vi.fn(),
+  setPlayerBanStatus: vi.fn(),
+  setPlayerRole: vi.fn(),
+  updateAnnouncement: vi.fn(),
+}));
+
 vi.mock("./db", () => dbMock);
+vi.mock("./admin", () => adminMock);
 vi.mock("./storage", () => ({ storagePut: vi.fn() }));
 vi.mock("./plans", async importOriginal => {
   const actual = await importOriginal<typeof import("./plans")>();
@@ -63,6 +76,13 @@ function createAnonymousContext(): TrpcContext {
     user: null,
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
     res: { clearCookie: vi.fn() } as TrpcContext["res"],
+  };
+}
+
+function createAdminContext(): TrpcContext {
+  return {
+    ...createContext(),
+    user: { ...user, role: "admin" },
   };
 }
 
@@ -258,5 +278,44 @@ describe("mountain tRPC CRUD", () => {
       code: "UNAUTHORIZED",
     });
     expect(plansMock.createAiPlan).not.toHaveBeenCalled();
+  });
+
+  it("blocks player administration for a non-admin even when authenticated", async () => {
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(
+      caller.admin.players.list({ query: "" })
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    expect(adminMock.listAdminPlayers).not.toHaveBeenCalled();
+  });
+
+  it("allows only an admin to operate players and publish announcements", async () => {
+    adminMock.listAdminPlayers.mockResolvedValue([
+      { id: 9, nickname: "登山者" },
+    ]);
+    adminMock.setPlayerBanStatus.mockResolvedValue({ id: 9, isBanned: true });
+    adminMock.createAnnouncement.mockResolvedValue({ id: "notice-1" });
+    const admin = { ...user, role: "admin" as const };
+    const caller = appRouter.createCaller(createAdminContext());
+
+    await expect(caller.admin.players.list({ query: "山" })).resolves.toEqual([
+      { id: 9, nickname: "登山者" },
+    ]);
+    await caller.admin.players.setBanStatus({ userId: 9, isBanned: true });
+    await caller.admin.announcements.create({
+      title: "安全情報",
+      body: "天気予報を確認してください。",
+      category: "safety",
+      isPublished: true,
+    });
+
+    expect(adminMock.listAdminPlayers).toHaveBeenCalledWith("山");
+    expect(adminMock.setPlayerBanStatus).toHaveBeenCalledWith(admin, 9, true);
+    expect(adminMock.createAnnouncement).toHaveBeenCalledWith(
+      admin,
+      expect.objectContaining({ category: "safety", isPublished: true })
+    );
   });
 });
