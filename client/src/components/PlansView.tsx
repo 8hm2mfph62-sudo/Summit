@@ -4,6 +4,7 @@ import {
   Bot,
   Check,
   ClipboardList,
+  FileDown,
   MessageCircle,
   Plus,
   Send,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { exportPlanPdf } from "@/lib/planPdf";
 
 type MountainOption = {
   id: string;
@@ -63,6 +65,7 @@ export default function PlansView({
   const [groupTitle, setGroupTitle] = useState("");
   const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [draft, setDraft] = useState({
     title: "",
     mountainId: "",
@@ -241,6 +244,27 @@ export default function PlansView({
     }
   }
 
+  async function exportCurrentPlanPdf() {
+    if (!detail) return;
+    setIsExportingPdf(true);
+    try {
+      const result = await exportPlanPdf({
+        plan: detail.plan,
+        participants: detail.participants,
+        missingFields: detail.missingFields,
+      });
+      toast.success(
+        `PDFを保存しました。${result.pageCount}ページで出力しています。`
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "PDFを出力できませんでした。"
+      );
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   if (selectedPlanId && detailQuery.isLoading)
     return <LoadingPlan onBack={() => setSelectedPlanId(null)} />;
   if (selectedPlanId && detail)
@@ -261,6 +285,7 @@ export default function PlansView({
         onSave={() => savePlan()}
         onApplySuggestion={() => suggestion && savePlan(suggestion.patch)}
         onSuggest={makeSuggestion}
+        onExportPdf={exportCurrentPlanPdf}
         onRespond={async (accept: boolean) => {
           try {
             await respondInvite.mutateAsync({ planId: detail.plan.id, accept });
@@ -279,6 +304,7 @@ export default function PlansView({
         isSubmitting={sendMessage.isPending || sendAiTurn.isPending}
         isSaving={updatePlan.isPending}
         isSuggesting={suggestFromGroup.isPending}
+        isExportingPdf={isExportingPdf}
       />
     );
 
@@ -507,10 +533,12 @@ function PlanDetail({
   onSave,
   onApplySuggestion,
   onSuggest,
+  onExportPdf,
   onRespond,
   isSubmitting,
   isSaving,
   isSuggesting,
+  isExportingPdf,
 }: any) {
   const plan = detail.plan;
   const isAi = plan.mode === "ai";
@@ -546,13 +574,26 @@ function PlanDetail({
                 : "会話を続けて、計画を完成させましょう。"}
             </p>
           </div>
-          {detail.isOwner && (
-            <button
-              onClick={() => setIsEditing((value: boolean) => !value)}
-              className="rounded-lg bg-emerald-50 px-3 py-2 text-[10px] font-black text-emerald-700"
-            >
-              {isEditing ? "閉じる" : "編集"}
-            </button>
+          {!invited && (
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={onExportPdf}
+                disabled={isExportingPdf}
+                className="flex items-center gap-1 rounded-lg bg-amber-100 px-3 py-2 text-[10px] font-black text-amber-900 transition-transform active:scale-95 disabled:opacity-50"
+                title="登山計画書をPDFで保存"
+              >
+                <FileDown className="h-3.5 w-3.5" />
+                {isExportingPdf ? "出力中" : "PDF"}
+              </button>
+              {detail.isOwner && (
+                <button
+                  onClick={() => setIsEditing((value: boolean) => !value)}
+                  className="rounded-lg bg-emerald-50 px-3 py-2 text-[10px] font-black text-emerald-700"
+                >
+                  {isEditing ? "閉じる" : "編集"}
+                </button>
+              )}
+            </div>
           )}
         </div>
         {invited ? (
