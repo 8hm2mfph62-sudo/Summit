@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { User } from "../drizzle/schema";
 import { COOKIE_NAME, ONE_YEAR_MS } from "../shared/const";
+import { sdk } from "./_core/sdk";
 import { issuePasswordSession } from "./password-session";
 
 const user: User = {
@@ -9,6 +10,7 @@ const user: User = {
   name: "Climber",
   email: "climber@example.com",
   passwordHash: "scrypt$v1$16384$8$1$salt$key",
+  sessionVersion: 3,
   loginMethod: "password",
   friendCode: "MNT-TEST",
   role: "user",
@@ -41,6 +43,10 @@ describe("password session", () => {
         sameSite: "none",
         path: "/",
       },
+    });
+    await expect(sdk.verifySession(token)).resolves.toMatchObject({
+      openId: user.openId,
+      sessionVersion: 3,
     });
   });
 

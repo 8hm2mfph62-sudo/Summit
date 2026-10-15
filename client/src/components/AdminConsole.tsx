@@ -3,7 +3,10 @@ import {
   ArrowLeft,
   BellRing,
   Crown,
+  Eye,
+  EyeOff,
   FileWarning,
+  KeyRound,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -89,6 +92,8 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [editingNoticeId, setEditingNoticeId] = useState<string | null>(null);
   const [notice, setNotice] = useState<NoticeDraft>(emptyNotice);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [showTemporaryPassword, setShowTemporaryPassword] = useState(false);
 
   const playersQuery = trpc.admin.players.list.useQuery({ query });
   const noticesQuery = trpc.admin.announcements.list.useQuery();
@@ -136,6 +141,17 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
     },
     onError: error => toast.error(error.message),
   });
+  const resetPassword = trpc.admin.players.resetPassword.useMutation({
+    onSuccess: async () => {
+      await refreshPlayers();
+      setTemporaryPassword("");
+      setShowTemporaryPassword(false);
+      toast.success(
+        "仮パスワードを設定し、対象の既存ログインを無効化しました。"
+      );
+    },
+    onError: error => toast.error(error.message),
+  });
   const createNotice = trpc.admin.announcements.create.useMutation({
     onSuccess: async () => {
       await refreshNotices();
@@ -162,10 +178,13 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
     setRole.isPending ||
     setBanStatus.isPending ||
     grantXp.isPending ||
-    resetProgress.isPending;
+    resetProgress.isPending ||
+    resetPassword.isPending;
 
   function selectPlayer(player: Player) {
     setSelectedPlayer(player);
+    setTemporaryPassword("");
+    setShowTemporaryPassword(false);
   }
 
   function beginNoticeEdit(item?: Announcement) {
@@ -246,7 +265,7 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
             プレイヤー管理
           </h2>
           <span className="text-[10px] font-bold text-stone-400">
-            パスワードは表示されません
+            メールを表示・パスワードを再設定
           </span>
         </div>
         <label className="relative mt-4 block">
@@ -313,6 +332,9 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
               <div>
                 <p className="text-sm font-black text-emerald-950">
                   {selectedPlayer.avatarUrl} {selectedPlayer.nickname}
+                </p>
+                <p className="mt-2 text-[9px] font-black tracking-wide text-stone-400">
+                  メールアドレス
                 </p>
                 <p className="mt-1 break-all text-[10px] text-stone-600">
                   {selectedPlayer.email || "メール未設定"}
@@ -407,6 +429,69 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
               >
                 進捗を初期化
               </button>
+            </div>
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <div className="flex items-start gap-2">
+                <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-black text-amber-950">
+                    仮パスワードを設定
+                  </p>
+                  <p className="mt-0.5 text-[9px] leading-relaxed text-amber-900/80">
+                    現在のパスワードは一方向暗号化されており閲覧できません。新しい仮パスワードを設定すると、既存のログインはすべて無効になります。
+                  </p>
+                </div>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <label className="relative min-w-0 flex-1">
+                  <input
+                    type={showTemporaryPassword ? "text" : "password"}
+                    value={temporaryPassword}
+                    onChange={event => setTemporaryPassword(event.target.value)}
+                    autoComplete="new-password"
+                    minLength={8}
+                    maxLength={128}
+                    placeholder="8文字以上の仮パスワード"
+                    className="w-full rounded-lg border border-amber-200 bg-white py-2 pl-2.5 pr-9 text-[10px] outline-none focus:border-amber-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowTemporaryPassword(current => !current)
+                    }
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-700"
+                    aria-label={
+                      showTemporaryPassword
+                        ? "仮パスワードを隠す"
+                        : "仮パスワードを表示する"
+                    }
+                  >
+                    {showTemporaryPassword ? (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </label>
+                <button
+                  disabled={pending || temporaryPassword.length < 8}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `「${selectedPlayer.nickname}」の仮パスワードを設定します。対象の既存ログインはすべて無効になります。`
+                      )
+                    ) {
+                      resetPassword.mutate({
+                        userId: selectedPlayer.id,
+                        temporaryPassword,
+                      });
+                    }
+                  }}
+                  className="shrink-0 rounded-lg bg-amber-600 px-3 py-2 text-[10px] font-black text-white transition active:scale-95 disabled:opacity-50"
+                >
+                  設定する
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -550,7 +635,7 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
       <section className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
         <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
         <p className="text-[10px] leading-relaxed">
-          進捗初期化・権限変更・利用停止は影響の大きい操作です。実行前に確認ダイアログを表示し、パスワードやハッシュ値は管理画面・APIのどちらにも返しません。
+          進捗初期化・権限変更・利用停止・仮パスワード設定は影響の大きい操作です。実行前に確認ダイアログを表示し、既存パスワードやハッシュ値は管理画面・APIのどちらにも返しません。
         </p>
       </section>
     </div>

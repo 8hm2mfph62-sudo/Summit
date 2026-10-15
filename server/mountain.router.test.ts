@@ -35,6 +35,7 @@ const adminMock = vi.hoisted(() => ({
   listAdminAnnouncements: vi.fn(),
   listAdminPlayers: vi.fn(),
   listPublishedAnnouncements: vi.fn(),
+  resetPlayerPasswordByAdmin: vi.fn(),
   resetPlayerProgressByAdmin: vi.fn(),
   setPlayerBanStatus: vi.fn(),
   setPlayerRole: vi.fn(),
@@ -296,6 +297,10 @@ describe("mountain tRPC CRUD", () => {
       { id: 9, nickname: "登山者" },
     ]);
     adminMock.setPlayerBanStatus.mockResolvedValue({ id: 9, isBanned: true });
+    adminMock.resetPlayerPasswordByAdmin.mockResolvedValue({
+      id: 9,
+      passwordReset: true,
+    });
     adminMock.createAnnouncement.mockResolvedValue({ id: "notice-1" });
     const admin = { ...user, role: "admin" as const };
     const caller = appRouter.createCaller(createAdminContext());
@@ -304,6 +309,10 @@ describe("mountain tRPC CRUD", () => {
       { id: 9, nickname: "登山者" },
     ]);
     await caller.admin.players.setBanStatus({ userId: 9, isBanned: true });
+    await caller.admin.players.resetPassword({
+      userId: 9,
+      temporaryPassword: "temporary-pass-2026",
+    });
     await caller.admin.announcements.create({
       title: "安全情報",
       body: "天気予報を確認してください。",
@@ -316,6 +325,10 @@ describe("mountain tRPC CRUD", () => {
     expect(adminMock.createAnnouncement).toHaveBeenCalledWith(
       admin,
       expect.objectContaining({ category: "safety", isPublished: true })
+    );
+    expect(adminMock.resetPlayerPasswordByAdmin).toHaveBeenCalledWith(
+      9,
+      "temporary-pass-2026"
     );
   });
 });

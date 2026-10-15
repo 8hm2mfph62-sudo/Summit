@@ -20,6 +20,7 @@ export async function issuePasswordSession(
   const sessionToken = await sdk.createSessionToken(user.openId, {
     name: user.name || user.email || "登山者",
     expiresInMs: ONE_YEAR_MS,
+    sessionVersion: user.sessionVersion,
   });
   res.cookie(COOKIE_NAME, sessionToken, {
     ...getSessionCookieOptions(req),

@@ -21,6 +21,7 @@ function createAuthContext(): {
     openId: "email:sample-user",
     email: "sample@example.com",
     passwordHash: "scrypt$v1$16384$8$1$salt$key",
+    sessionVersion: 1,
     name: "Sample User",
     loginMethod: "password",
     role: "user",

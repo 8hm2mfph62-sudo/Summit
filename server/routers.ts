@@ -15,6 +15,7 @@ import {
   listAdminAnnouncements,
   listAdminPlayers,
   listPublishedAnnouncements,
+  resetPlayerPasswordByAdmin,
   resetPlayerProgressByAdmin,
   setPlayerBanStatus,
   setPlayerRole,
@@ -242,6 +243,26 @@ export const appRouter = router({
         .mutation(async ({ input }) => {
           try {
             return await resetPlayerProgressByAdmin(input.userId);
+          } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      resetPassword: adminProcedure
+        .input(
+          z.object({
+            userId: z.number().int().positive(),
+            temporaryPassword: z
+              .string()
+              .min(8, "仮パスワードは8文字以上で設定してください。")
+              .max(128, "仮パスワードは128文字以内で設定してください。"),
+          })
+        )
+        .mutation(async ({ input }) => {
+          try {
+            return await resetPlayerPasswordByAdmin(
+              input.userId,
+              input.temporaryPassword
+            );
           } catch (error) {
             return toTrpcError(error);
           }

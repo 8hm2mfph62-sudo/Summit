@@ -11,6 +11,7 @@ import {
 } from "../drizzle/schema";
 import { calculateLevel } from "./progress";
 import { databaseOrThrow } from "./db";
+import { hashPassword } from "./password-auth";
 
 export type AnnouncementCategory = "info" | "safety" | "maintenance" | "event";
 
@@ -185,6 +186,28 @@ export async function grantPlayerXp(targetUserId: number, amount: number) {
     .set(progress)
     .where(eq(userProfiles.userId, target.id));
   return { id: target.id, totalXp: progress.totalXp, level: progress.level };
+}
+
+/**
+ * Replaces a player password with an administrator-chosen temporary password.
+ * Passwords remain one-way scrypt hashes and are never returned from this API.
+ */
+export async function resetPlayerPasswordByAdmin(
+  targetUserId: number,
+  temporaryPassword: string
+) {
+  const db = await databaseOrThrow();
+  const target = await getTargetUser(targetUserId);
+  const passwordHash = await hashPassword(temporaryPassword);
+  await db
+    .update(users)
+    .set({
+      passwordHash,
+      loginMethod: "password",
+      sessionVersion: sql`${users.sessionVersion} + 1`,
+    })
+    .where(eq(users.id, target.id));
+  return { id: target.id, passwordReset: true as const };
 }
 
 /** Clears a player’s climb records and progress while keeping the account itself intact. */
