@@ -1,8 +1,9 @@
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   announcements,
   climbRecords,
+  emailLoginTokens,
   type User,
   userBadges,
   userChallenges,
@@ -226,6 +227,72 @@ export async function resetPlayerProgressByAdmin(targetUserId: number) {
     .set(calculateLevel(0))
     .where(eq(userProfiles.userId, target.id));
   return { id: target.id, reset: true as const };
+}
+
+/**
+ * Permanently removes selected non-admin player accounts and their cascaded data.
+ * Admin accounts, including the actor, are deliberately excluded from bulk deletion.
+ */
+export async function deletePlayersByAdmin(actor: User, userIds: number[]) {
+  const ids = Array.from(new Set(userIds));
+  if (!ids.length) throw new Error("削除するプレイヤーを選択してください。");
+  if (ids.includes(actor.id)) {
+    throw new Error("自分自身のアカウントは一括削除できません。");
+  }
+
+  const db = await databaseOrThrow();
+  return db.transaction(async tx => {
+    const targets = await tx
+      .select({
+        id: users.id,
+        nickname: userProfiles.nickname,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+      })
+      .from(users)
+      .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
+      .where(inArray(users.id, ids));
+
+    if (targets.length !== ids.length) {
+      throw new Error("選択したプレイヤーの一部が見つかりません。");
+    }
+    if (targets.some(target => target.role === "admin")) {
+      throw new Error("管理者アカウントは一括削除できません。");
+    }
+
+    const authoredNotices = await tx
+      .select({ id: announcements.id })
+      .from(announcements)
+      .where(inArray(announcements.authorId, ids))
+      .limit(1);
+    if (authoredNotices.length) {
+      throw new Error(
+        "お知らせを作成したプレイヤーは削除できません。お知らせの作成者を変更してから削除してください。"
+      );
+    }
+
+    const emails = targets
+      .map(target => target.email)
+      .filter((email): email is string => Boolean(email));
+    if (emails.length) {
+      await tx
+        .delete(emailLoginTokens)
+        .where(inArray(emailLoginTokens.email, emails));
+    }
+
+    await tx
+      .delete(users)
+      .where(and(inArray(users.id, ids), eq(users.role, "user")));
+
+    return {
+      deletedCount: targets.length,
+      deletedUserIds: targets.map(target => target.id),
+      deletedNames: targets.map(
+        target => target.nickname || target.name || "登山者"
+      ),
+    };
+  });
 }
 
 function toAnnouncementDto(row: {

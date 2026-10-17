@@ -11,11 +11,22 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserCog,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Category = "info" | "safety" | "maintenance" | "event";
 type Player = {
@@ -94,6 +105,9 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
   const [notice, setNotice] = useState<NoticeDraft>(emptyNotice);
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [showTemporaryPassword, setShowTemporaryPassword] = useState(false);
+  const [bulkSelection, setBulkSelection] = useState<number[]>([]);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteConfirmation, setBulkDeleteConfirmation] = useState("");
 
   const playersQuery = trpc.admin.players.list.useQuery({ query });
   const noticesQuery = trpc.admin.announcements.list.useQuery();
@@ -152,6 +166,21 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
     },
     onError: error => toast.error(error.message),
   });
+  const bulkDelete = trpc.admin.players.bulkDelete.useMutation({
+    onSuccess: async result => {
+      setBulkSelection([]);
+      setBulkDeleteConfirmation("");
+      setBulkDeleteOpen(false);
+      setSelectedPlayer(current =>
+        current && result.deletedUserIds.includes(current.id) ? null : current
+      );
+      await refreshPlayers();
+      toast.success(
+        `${result.deletedCount}人のプレイヤーを完全に削除しました。`
+      );
+    },
+    onError: error => toast.error(error.message),
+  });
   const createNotice = trpc.admin.announcements.create.useMutation({
     onSuccess: async () => {
       await refreshNotices();
@@ -172,6 +201,13 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
 
   const players = (playersQuery.data ?? []) as Player[];
   const notices = (noticesQuery.data ?? []) as Announcement[];
+  const selectedPlayers = players.filter(player =>
+    bulkSelection.includes(player.id)
+  );
+  const visibleUserPlayers = players.filter(player => player.role === "user");
+  const allVisibleUsersSelected =
+    visibleUserPlayers.length > 0 &&
+    visibleUserPlayers.every(player => bulkSelection.includes(player.id));
   const activePlayers = players.filter(player => !player.isBanned).length;
   const adminPlayers = players.filter(player => player.role === "admin").length;
   const pending =
@@ -179,12 +215,43 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
     setBanStatus.isPending ||
     grantXp.isPending ||
     resetProgress.isPending ||
-    resetPassword.isPending;
+    resetPassword.isPending ||
+    bulkDelete.isPending;
 
   function selectPlayer(player: Player) {
     setSelectedPlayer(player);
     setTemporaryPassword("");
     setShowTemporaryPassword(false);
+  }
+
+  function toggleBulkSelection(player: Player) {
+    if (player.role === "admin") {
+      toast.error("管理者アカウントは一括削除できません。");
+      return;
+    }
+    setBulkSelection(current => {
+      if (current.includes(player.id)) {
+        return current.filter(id => id !== player.id);
+      }
+      if (current.length >= 100) {
+        toast.error("一度に選択できるのは100人までです。");
+        return current;
+      }
+      return [...current, player.id];
+    });
+  }
+
+  function selectVisiblePlayers() {
+    const eligibleIds = players
+      .filter(player => player.role === "user")
+      .map(player => player.id);
+    setBulkSelection(current => {
+      const next = Array.from(new Set([...current, ...eligibleIds]));
+      if (next.length > 100) {
+        toast.error("一度に選択できるのは100人までです。");
+      }
+      return next.slice(0, 100);
+    });
   }
 
   function beginNoticeEdit(item?: Announcement) {
@@ -272,53 +339,117 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
           <input
             value={query}
-            onChange={event => setQuery(event.target.value)}
+            onChange={event => {
+              setQuery(event.target.value);
+              setBulkSelection([]);
+            }}
             placeholder="名前・メール・フレンドコードで検索"
             maxLength={160}
             className="w-full rounded-xl border border-stone-200 py-2.5 pl-9 pr-3 text-xs outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
           />
         </label>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-100 bg-red-50/60 px-3 py-2.5">
+          <p className="text-[10px] font-black text-red-900">
+            一括削除対象: {bulkSelection.length}人
+            <span className="ml-1 font-medium text-red-700/80">
+              （管理者は対象外）
+            </span>
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={pending || visibleUserPlayers.length === 0}
+              onClick={() => {
+                if (allVisibleUsersSelected) setBulkSelection([]);
+                else selectVisiblePlayers();
+              }}
+              className="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-red-800 transition active:scale-95 disabled:opacity-50"
+            >
+              {allVisibleUsersSelected ? "選択解除" : "表示中を選択"}
+            </button>
+            <button
+              type="button"
+              disabled={pending || bulkSelection.length === 0}
+              onClick={() => {
+                setBulkDeleteConfirmation("");
+                setBulkDeleteOpen(true);
+              }}
+              className="flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1.5 text-[10px] font-black text-white transition active:scale-95 disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              一括削除
+            </button>
+          </div>
+        </div>
         <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
           {playersQuery.isLoading ? (
             <p className="py-5 text-center text-xs text-stone-400">
               プレイヤーを読み込んでいます。
             </p>
           ) : players.length ? (
-            players.map(player => (
-              <button
-                key={player.id}
-                onClick={() => selectPlayer(player)}
-                className={`w-full rounded-xl border p-3 text-left transition active:scale-[0.99] ${
-                  selectedPlayer?.id === player.id
-                    ? "border-emerald-500 bg-emerald-50"
-                    : "border-stone-100 bg-stone-50 hover:border-emerald-200"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{player.avatarUrl}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="truncate text-xs font-black text-stone-800">
-                        {player.nickname}
-                      </p>
-                      {player.role === "admin" && (
-                        <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-                      )}
-                      {player.isBanned && (
-                        <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-red-500" />
-                      )}
+            players.map(player => {
+              const isBulkSelected = bulkSelection.includes(player.id);
+              const isAdmin = player.role === "admin";
+              return (
+                <div key={player.id} className="flex items-stretch gap-2">
+                  <label
+                    className={`flex w-10 shrink-0 items-center justify-center rounded-xl border transition ${
+                      isAdmin
+                        ? "cursor-not-allowed border-stone-100 bg-stone-50 text-stone-300"
+                        : isBulkSelected
+                          ? "border-red-300 bg-red-100 text-red-700"
+                          : "border-stone-200 bg-white text-stone-500"
+                    }`}
+                    title={
+                      isAdmin
+                        ? "管理者アカウントは一括削除できません"
+                        : "一括削除対象に選択"
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isBulkSelected}
+                      disabled={isAdmin || pending}
+                      onChange={() => toggleBulkSelection(player)}
+                      className="h-4 w-4 accent-red-600"
+                      aria-label={`${player.nickname}を一括削除対象に選択`}
+                    />
+                  </label>
+                  <button
+                    onClick={() => selectPlayer(player)}
+                    className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition active:scale-[0.99] ${
+                      selectedPlayer?.id === player.id
+                        ? "border-emerald-500 bg-emerald-50"
+                        : "border-stone-100 bg-stone-50 hover:border-emerald-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{player.avatarUrl}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate text-xs font-black text-stone-800">
+                            {player.nickname}
+                          </p>
+                          {isAdmin && (
+                            <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                          )}
+                          {player.isBanned && (
+                            <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                          )}
+                        </div>
+                        <p className="mt-0.5 truncate text-[10px] text-stone-500">
+                          {player.email || "メール未設定"}
+                        </p>
+                      </div>
+                      <div className="text-right text-[10px] font-bold text-stone-500">
+                        <p>Lv.{player.level}</p>
+                        <p>{player.climbCount}回登頂</p>
+                      </div>
                     </div>
-                    <p className="mt-0.5 truncate text-[10px] text-stone-500">
-                      {player.email || "メール未設定"}
-                    </p>
-                  </div>
-                  <div className="text-right text-[10px] font-bold text-stone-500">
-                    <p>Lv.{player.level}</p>
-                    <p>{player.climbCount}回登頂</p>
-                  </div>
+                  </button>
                 </div>
-              </button>
-            ))
+              );
+            })
           ) : (
             <p className="py-5 text-center text-xs text-stone-400">
               該当するプレイヤーはいません。
@@ -497,6 +628,62 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
         )}
       </section>
 
+      <AlertDialog
+        open={bulkDeleteOpen}
+        onOpenChange={open => {
+          setBulkDeleteOpen(open);
+          if (!open) setBulkDeleteConfirmation("");
+        }}
+      >
+        <AlertDialogContent className="border-red-200 bg-[#fffaf8]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-900">
+              <Trash2 className="h-5 w-5" />
+              {bulkSelection.length}人のプレイヤーを完全に削除
+            </AlertDialogTitle>
+            <AlertDialogDescription className="leading-relaxed text-red-900/80">
+              アカウント、登頂記録、フレンド関係、登山計画、会話、進捗などの関連データを完全に削除します。この操作は取り消せません。管理者アカウントは削除されません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-xl border border-red-100 bg-white p-3">
+            <p className="text-[10px] font-black text-red-900">削除対象</p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-700">
+              {selectedPlayers.map(player => player.nickname).join("、") ||
+                "選択したプレイヤー"}
+            </p>
+          </div>
+          <label className="block text-xs font-bold text-red-950">
+            続行するには「削除」と入力してください
+            <input
+              value={bulkDeleteConfirmation}
+              onChange={event => setBulkDeleteConfirmation(event.target.value)}
+              autoComplete="off"
+              placeholder="削除"
+              maxLength={8}
+              className="mt-2 w-full rounded-xl border border-red-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100"
+            />
+          </label>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDelete.isPending}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                bulkDelete.isPending ||
+                bulkSelection.length === 0 ||
+                bulkDeleteConfirmation !== "削除"
+              }
+              onClick={() => bulkDelete.mutate({ userIds: bulkSelection })}
+              className="bg-red-600 text-white hover:bg-red-700 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {bulkDelete.isPending
+                ? "削除中…"
+                : `${bulkSelection.length}人を完全に削除`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <section className="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-xs">
         <div className="flex items-center justify-between gap-3">
           <h2 className="flex items-center gap-1.5 text-sm font-black text-emerald-950">
@@ -635,7 +822,7 @@ export default function AdminConsole({ onBack }: { onBack: () => void }) {
       <section className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
         <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
         <p className="text-[10px] leading-relaxed">
-          進捗初期化・権限変更・利用停止・仮パスワード設定は影響の大きい操作です。実行前に確認ダイアログを表示し、既存パスワードやハッシュ値は管理画面・APIのどちらにも返しません。
+          一括削除・進捗初期化・権限変更・利用停止・仮パスワード設定は影響の大きい操作です。一括削除は対象確認と「削除」の入力を必須にし、管理者アカウントは対象外です。既存パスワードやハッシュ値は管理画面・APIのどちらにも返しません。
         </p>
       </section>
     </div>

@@ -11,6 +11,7 @@ import {
 } from "./_core/trpc";
 import {
   createAnnouncement,
+  deletePlayersByAdmin,
   grantPlayerXp,
   listAdminAnnouncements,
   listAdminPlayers,
@@ -264,6 +265,37 @@ export const appRouter = router({
               input.temporaryPassword
             );
           } catch (error) {
+            return toTrpcError(error);
+          }
+        }),
+      bulkDelete: adminProcedure
+        .input(
+          z.object({
+            userIds: z
+              .array(z.number().int().positive())
+              .min(1, "削除するプレイヤーを選択してください。")
+              .max(100, "一度に削除できるのは100人までです。")
+              .refine(
+                ids => new Set(ids).size === ids.length,
+                "同じプレイヤーが重複しています。"
+              ),
+          })
+        )
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await deletePlayersByAdmin(ctx.user, input.userIds);
+          } catch (error) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : "プレイヤーを削除できませんでした。";
+            if (
+              message.includes("削除") ||
+              message.includes("管理者") ||
+              message.includes("見つかりません")
+            ) {
+              throw new TRPCError({ code: "BAD_REQUEST", message });
+            }
             return toTrpcError(error);
           }
         }),

@@ -31,6 +31,7 @@ const plansMock = vi.hoisted(() => ({
 
 const adminMock = vi.hoisted(() => ({
   createAnnouncement: vi.fn(),
+  deletePlayersByAdmin: vi.fn(),
   grantPlayerXp: vi.fn(),
   listAdminAnnouncements: vi.fn(),
   listAdminPlayers: vi.fn(),
@@ -290,6 +291,13 @@ describe("mountain tRPC CRUD", () => {
       code: "FORBIDDEN",
     });
     expect(adminMock.listAdminPlayers).not.toHaveBeenCalled();
+
+    await expect(
+      caller.admin.players.bulkDelete({ userIds: [9] })
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    expect(adminMock.deletePlayersByAdmin).not.toHaveBeenCalled();
   });
 
   it("allows only an admin to operate players and publish announcements", async () => {
@@ -300,6 +308,11 @@ describe("mountain tRPC CRUD", () => {
     adminMock.resetPlayerPasswordByAdmin.mockResolvedValue({
       id: 9,
       passwordReset: true,
+    });
+    adminMock.deletePlayersByAdmin.mockResolvedValue({
+      deletedCount: 2,
+      deletedUserIds: [9, 10],
+      deletedNames: ["登山者", "山好き"],
     });
     adminMock.createAnnouncement.mockResolvedValue({ id: "notice-1" });
     const admin = { ...user, role: "admin" as const };
@@ -312,6 +325,12 @@ describe("mountain tRPC CRUD", () => {
     await caller.admin.players.resetPassword({
       userId: 9,
       temporaryPassword: "temporary-pass-2026",
+    });
+    await expect(
+      caller.admin.players.bulkDelete({ userIds: [9, 10] })
+    ).resolves.toMatchObject({
+      deletedCount: 2,
+      deletedUserIds: [9, 10],
     });
     await caller.admin.announcements.create({
       title: "安全情報",
@@ -330,5 +349,23 @@ describe("mountain tRPC CRUD", () => {
       9,
       "temporary-pass-2026"
     );
+    expect(adminMock.deletePlayersByAdmin).toHaveBeenCalledWith(admin, [9, 10]);
+  });
+
+  it("rejects empty, duplicate, or oversized bulk-deletion selections", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+
+    await expect(
+      caller.admin.players.bulkDelete({ userIds: [] })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      caller.admin.players.bulkDelete({ userIds: [9, 9] })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      caller.admin.players.bulkDelete({
+        userIds: Array.from({ length: 101 }, (_, index) => index + 1),
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(adminMock.deletePlayersByAdmin).not.toHaveBeenCalled();
   });
 });
