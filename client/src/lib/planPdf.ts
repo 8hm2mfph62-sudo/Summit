@@ -1,3 +1,5 @@
+import { APP_NAME } from "./brand";
+
 export type PlanPdfPlan = {
   id: string;
   mode: "friends" | "ai";
@@ -317,9 +319,9 @@ export async function exportPlanPdf(input: PlanPdfInput) {
     });
     pdf.setProperties({
       title: `登山計画書 - ${model.title}`,
-      subject: "Peak Album 登山計画書",
-      author: "Peak Album",
-      creator: "Peak Album",
+      subject: `${APP_NAME} 登山計画書`,
+      author: APP_NAME,
+      creator: APP_NAME,
     });
 
     const margin = 12;

@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { LockKeyhole, LogIn, Mail, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { APP_NAME } from "@/lib/brand";
 
 export default function AuthEntryScreen({
   onAuthenticated,
@@ -45,7 +46,7 @@ export default function AuthEntryScreen({
             YOUR CLIMBING JOURNAL
           </p>
           <h1 className="mt-2 text-center text-3xl font-black font-display-heavy">
-            Peak Album
+            {APP_NAME}
           </h1>
           <p className="mt-4 text-center text-sm leading-relaxed text-green-100">
             登頂記録、フレンド、登山計画書を、あなたのアカウントに安全に保存します。

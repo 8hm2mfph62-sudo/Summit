@@ -26,6 +26,7 @@ import AdminConsole from "./components/AdminConsole";
 import AuthEntryScreen from "./components/AuthEntryScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { APP_NAME } from "./lib/brand";
 
 type Tab = "home" | "search" | "plans" | "album" | "mypage" | "admin";
 
@@ -229,7 +230,7 @@ function MountainApp() {
             <span className="text-xl">🏔️</span>
             <div>
               <h1 className="text-sm font-black tracking-wider text-[#2D5A27] font-display-heavy">
-                Peak Album
+                {APP_NAME}
               </h1>
               <span className="text-[8px] font-bold text-emerald-700">
                 データを安全に保存中
@@ -361,7 +362,7 @@ function LoadingScreen() {
   return (
     <div className="min-h-screen bg-[#FDFBF4] flex flex-col items-center justify-center gap-3 text-emerald-800">
       <Loader2 className="h-7 w-7 animate-spin" />
-      <p className="text-xs font-black">Peak Album を準備しています</p>
+      <p className="text-xs font-black">{APP_NAME} を準備しています</p>
     </div>
   );
 }
