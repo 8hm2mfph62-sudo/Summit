@@ -103,6 +103,13 @@ describe("plan PDF export", () => {
     expect(markup).not.toContain("<script>alert");
   });
 
+  it("includes the Summit logo in the printed plan header", () => {
+    const markup = planPdfMarkup(createPlanPdfModel(completePlan));
+
+    expect(markup).toContain("SUMMIT / HIKING PLAN BOOK");
+    expect(markup).toContain("summit-logo_a8a0697b.png");
+  });
+
   it("removes filesystem-reserved characters from downloaded filenames", () => {
     expect(planPdfFilename('登山:計画/書*? "A"', new Date("2026-10-01"))).toBe(
       "登山計画書_登山計画書 A_20261001.pdf"

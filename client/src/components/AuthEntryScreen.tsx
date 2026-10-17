@@ -2,7 +2,7 @@ import { FormEvent, useState } from "react";
 import { LockKeyhole, LogIn, Mail, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { APP_NAME } from "@/lib/brand";
+import { APP_LOGO_URL, APP_NAME } from "@/lib/brand";
 
 export default function AuthEntryScreen({
   onAuthenticated,
@@ -41,7 +41,11 @@ export default function AuthEntryScreen({
     <div className="min-h-screen bg-stone-100 flex justify-center">
       <main className="flex w-full max-w-md flex-col justify-center p-6">
         <section className="forest-gradient rounded-[32px] p-6 text-white shadow-xl">
-          <p className="text-5xl text-center">🏔️</p>
+          <img
+            src={APP_LOGO_URL}
+            alt="Summit"
+            className="mx-auto h-20 w-20 rounded-2xl bg-white object-contain shadow-lg"
+          />
           <p className="mt-4 text-center text-[10px] font-black tracking-[0.24em] text-green-200">
             YOUR CLIMBING JOURNAL
           </p>

@@ -1,0 +1,23 @@
+{
+  "name": "Summit",
+  "short_name": "Summit",
+  "description": "登頂記録、フレンド、登山計画書を安全に保存する登山ジャーナル。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDFBF4",
+  "theme_color": "#2D5A27",
+  "icons": [
+    {
+      "src": "/manus-storage/summit-app-icon-192_d0684ea6.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/manus-storage/summit-app-icon-512_1bca7128.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

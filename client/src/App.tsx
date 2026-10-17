@@ -26,7 +26,7 @@ import AdminConsole from "./components/AdminConsole";
 import AuthEntryScreen from "./components/AuthEntryScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { APP_NAME } from "./lib/brand";
+import { APP_LOGO_URL, APP_NAME } from "./lib/brand";
 
 type Tab = "home" | "search" | "plans" | "album" | "mypage" | "admin";
 
@@ -227,7 +227,11 @@ function MountainApp() {
       <div className="w-full max-w-md bg-[#FDFBF4] h-screen flex flex-col shadow-2xl relative border-x border-[#EAE2D1]/60 overflow-hidden">
         <header className="sticky top-0 bg-[#FDFBF4]/95 backdrop-blur-md px-5 py-3.5 border-b-2 border-[#EAE2D1] flex items-center justify-between z-30 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🏔️</span>
+            <img
+              src={APP_LOGO_URL}
+              alt="Summit"
+              className="h-8 w-8 rounded-lg bg-white object-contain shadow-sm"
+            />
             <div>
               <h1 className="text-sm font-black tracking-wider text-[#2D5A27] font-display-heavy">
                 {APP_NAME}

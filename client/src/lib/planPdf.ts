@@ -1,4 +1,4 @@
-import { APP_NAME } from "./brand";
+import { APP_LOGO_URL, APP_NAME } from "./brand";
 
 export type PlanPdfPlan = {
   id: string;
@@ -191,7 +191,7 @@ export function planPdfMarkup(model: PlanPdfModel) {
     <div class="plan-pdf-page">
       <header>
         <div>
-          <p class="eyebrow">PEAK ALBUM / HIKING PLAN BOOK</p>
+          <div class="brand-row"><img src="${APP_LOGO_URL}" alt="${APP_NAME}" class="brand-logo" /><p class="eyebrow">${APP_NAME.toUpperCase()} / HIKING PLAN BOOK</p></div>
           <h1>登山計画書</h1>
           <p class="title">${escapeHtml(model.title)}</p>
         </div>
@@ -291,7 +291,7 @@ export async function exportPlanPdf(input: PlanPdfInput) {
   ].join(";");
   root.innerHTML = `<style>
     .plan-pdf-page{box-sizing:border-box;width:794px;min-height:1123px;padding:44px;background:#fffdf6;color:#173325;font-size:14px;line-height:1.65}
-    .plan-pdf-page *{box-sizing:border-box}.plan-pdf-page header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:3px solid #1f6a43;padding-bottom:20px}
+    .plan-pdf-page *{box-sizing:border-box}.plan-pdf-page header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:3px solid #1f6a43;padding-bottom:20px}.plan-pdf-page .brand-row{display:flex;align-items:center;gap:8px}.plan-pdf-page .brand-logo{width:30px;height:30px;object-fit:contain;border-radius:7px;background:#fff}
     .plan-pdf-page .eyebrow{margin:0;color:#367854;font-weight:800;font-size:10px;letter-spacing:1.7px}.plan-pdf-page h1{margin:4px 0 0;font-size:26px;line-height:1.25}.plan-pdf-page .title{margin:5px 0 0;font-size:17px;font-weight:800}
     .plan-pdf-page .badges{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}.plan-pdf-page .badge{border-radius:999px;background:#e4f1e7;color:#145431;font-weight:800;font-size:10px;padding:6px 10px;white-space:nowrap}.plan-pdf-page .badge.amber{background:#fff0c9;color:#855600}.plan-pdf-page .badge.gray{background:#eeeef0;color:#55535a}
     .plan-pdf-page .notice{display:flex;gap:12px;align-items:center;margin:18px 0;padding:12px 14px;border-radius:10px;background:#fff4d9;color:#765000;font-size:12px}.plan-pdf-page .notice.complete{background:#e9f5eb;color:#1a643b}.plan-pdf-page .notice strong{white-space:nowrap}
