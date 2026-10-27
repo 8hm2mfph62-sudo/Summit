@@ -6,6 +6,14 @@ import superjson from "superjson";
 import App from "./App";
 import "./index.css";
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(error => {
+      console.warn("[PWA] Service worker registration failed", error);
+    });
+  });
+}
+
 const queryClient = new QueryClient();
 
 queryClient.getQueryCache().subscribe(event => {
